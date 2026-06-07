@@ -1,61 +1,62 @@
-# Control Factory from anywhere (Vercel + Turso)
+# Control Factory from anywhere
 
-Use everything from a hosted website — including **Login with GitHub** — while the
-engine runs **headless** on your Mac. They never talk directly; both use **Turso**.
+The **engine** is the single source of truth and the live wire: it owns the
+database, runs Claude in git worktrees, and broadcasts every change over
+WebSocket. Both UIs are thin clients of that one engine:
 
 ```
-  Vercel site (web/)            Turso cloud DB              engine on your Mac (headless)
-  · Login with GitHub   ──►   projects · jobs · token  ◄──  syncs · runs Claude · opens PRs
-  · pick repo, queue jobs        (shared state)
-  · watch status + PRs
+  ui/  (Vite, served BY the engine)          engine on your Mac
+  · full brutalist UI, same-origin   ◄──►   libSQL/Turso · runs Claude · WS live wire · REST
+  web/ (Next.js, deploy to Vercel)
+  · same UI, points at NEXT_PUBLIC_ENGINE_URL
 ```
 
-## 1. Free Turso DB
-Sign up at **turso.tech** → create a database + an **auth token**. Note the
-`libsql://…` URL and the token.
+There is no separate cloud database to poll and no Convex — the rich, live
+features (streaming terminals, Agents grid, chat replies, web terminal) work in
+**both** UIs because both talk to the engine's WebSocket directly.
 
-## 2. Push this repo to GitHub
-Already a git repo — just point it at yours and push:
+## Local (default)
+
 ```bash
-git remote add origin https://github.com/<you>/<repo>.git
-git push -u origin main
+npm run setup     # install root + engine + ui + web
+npm run dev       # engine :8787, ui :5173 (Vite proxies /api + /ws to the engine)
+# open http://localhost:5173
 ```
 
-## 3. Deploy the site to Vercel
-- Import the repo, set **Root Directory = `web`**.
-- **Environment Variables:**
-  - `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (from step 1)
-  - `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` (from the OAuth App below)
-- Deploy. Note your URL, e.g. `https://your-app.vercel.app`.
+`engine/.env` is optional. With no `TURSO_*` set, the engine uses a local
+`engine/factory.db` file. With `TURSO_*` set it connects directly to your Turso
+cloud DB (so the same data is reachable from a hosted engine too).
 
-### GitHub OAuth App (so "Login with GitHub" works on the site)
-github.com → Settings → Developer settings → **OAuth Apps → New**:
-- **Homepage URL:** `https://your-app.vercel.app`
-- **Authorization callback URL:** `https://your-app.vercel.app/api/github/callback`
-- Copy Client ID + a generated Client Secret into Vercel's env (above), redeploy.
+## From anywhere (hosted web app)
 
-## 4. Run the headless engine on your Mac
-`engine/.env` only needs the **same Turso** values (no GitHub creds — login happens
-on the site):
-```
-TURSO_DATABASE_URL=libsql://your-db.turso.io
-TURSO_AUTH_TOKEN=...
-```
-Then keep it running (no UI needed):
-```bash
-npm start          # headless engine: syncs Turso, runs queued jobs
-```
+1. **Expose the engine** on your Mac with auth on:
+   ```
+   # engine/.env
+   FACTORY_HOST=0.0.0.0
+   FACTORY_AUTH_TOKEN=<a long random secret>
+   FACTORY_APP_URL=https://your-app.vercel.app   # where OAuth returns to
+   ```
+   Then `npm start` and put it behind a tunnel (cloudflared / ngrok / Tailscale)
+   to get a public `https://…` URL. The engine runs Claude with shell access, so
+   **always set `FACTORY_AUTH_TOKEN` before exposing it.**
 
-## How it works
-1. On the **Vercel site** (your phone): **Login with GitHub** → pick a repo → queue a
-   job. The GitHub token + job are written to **Turso**.
-2. Your **Mac's engine** syncs Turso, reads the token, clones the repo, runs Claude,
-   opens a **PR**, and writes status + PR link back to Turso.
-3. The site polls Turso → you watch `pending → running → done` + the PR.
+2. **Deploy `web/` to Vercel** (Root Directory = `web`) with:
+   ```
+   NEXT_PUBLIC_ENGINE_URL = https://your-engine-url
+   ```
 
-## Notes
-- **Your Mac must be running `npm start`** for jobs to execute (they sit `pending`
-  until it syncs).
-- **Live terminal output** isn't streamed to the site (status/results/PRs are).
-- The GitHub token authorized on the site flows to the engine via Turso, so it can
-  clone private repos + open PRs without GitHub creds living on your Mac.
+3. Open the Vercel app, enter your `FACTORY_AUTH_TOKEN` on the access screen, and
+   you have the full live UI from your phone — every job, terminal, and agent
+   streams straight from your Mac.
+
+## GitHub
+
+Connect once on the engine — either **Login with GitHub** (OAuth App, set
+`GITHUB_CLIENT_ID/SECRET` + `FACTORY_OAUTH_CALLBACK` in `engine/.env`) or the
+**Connect GitHub** token button. The connected token is stored on the engine and
+used for clones + PRs; the web client never needs its own GitHub credentials.
+
+## Claude auth
+
+The engine spawns the `claude` CLI, so it uses **your Claude subscription** — be
+signed in (`claude`) on the machine running the engine. No API key needed.

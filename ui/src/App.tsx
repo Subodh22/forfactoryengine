@@ -14,7 +14,7 @@ import { JobNotifications } from "@/components/JobNotifications";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { useFactory, useProjects, useJobs, useTodayStats } from "@/lib/data";
 import { removeProject, connectGithub } from "@/lib/mutations";
-import { setToken } from "@/lib/api";
+import { setToken, ENGINE_URL } from "@/lib/api";
 
 function fmtTokens(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -160,7 +160,7 @@ export function App() {
           {ghLogin ? (
             <span className="font-data text-[11px] uppercase">@{ghLogin}</span>
           ) : ghOAuth ? (
-            <a href="/api/github/login" className="font-data text-[11px] px-3 py-1.5 bg-ink text-concrete uppercase brutal-press border-2 border-ink">Login with GitHub</a>
+            <a href={`${ENGINE_URL}/api/github/login`} className="font-data text-[11px] px-3 py-1.5 bg-ink text-concrete uppercase brutal-press border-2 border-ink">Login with GitHub</a>
           ) : (
             <button onClick={connect} className="font-data text-[11px] px-3 py-1.5 bg-ink text-concrete uppercase brutal-press border-2 border-ink">Connect GitHub</button>
           )}

@@ -1,27 +1,130 @@
-:root { --ink:#e7e3d8; --paper:#14161b; --panel:#1b1e25; --muted:#8b8f98; --line:#2a2e37; }
-* { box-sizing: border-box; }
-body { margin:0; background:var(--paper); color:var(--ink); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-.wrap { max-width:620px; margin:0 auto; padding:24px 16px; }
-header { display:flex; align-items:center; gap:10px; padding-bottom:14px; border-bottom:2px solid var(--line); }
-.logo { width:14px; height:14px; background:var(--ink); display:inline-block; }
-header b { font-size:15px; letter-spacing:1px; }
-.tag { font-size:10px; color:var(--muted); text-transform:uppercase; }
-.row { display:flex; gap:8px; margin-top:14px; }
-input, select, textarea { background:var(--panel); border:2px solid var(--line); color:var(--ink); padding:10px 12px; font:inherit; font-size:13px; outline:none; width:100%; }
-input:focus, textarea:focus, select:focus { border-color:var(--ink); }
-button { background:var(--ink); color:var(--paper); border:none; padding:0 16px; font:inherit; font-weight:700; text-transform:uppercase; font-size:12px; cursor:pointer; white-space:nowrap; }
-button.ghost { background:var(--panel); border:2px solid var(--line); color:var(--ink); }
-.muted { color:var(--muted); font-size:11px; }
-.section { margin-top:18px; }
-.job { display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--line); padding:10px 12px; margin-top:8px; }
-.badge { font-size:10px; text-transform:uppercase; border:1px solid; padding:1px 6px; min-width:62px; text-align:center; }
-.title { flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pr { color:#6ea8fe; font-size:11px; text-decoration:none; border:1px solid #6ea8fe; padding:0 5px; }
-.time { font-size:11px; color:var(--muted); }
-.add { margin-top:8px; display:grid; grid-template-columns:1fr 1fr auto; gap:6px; }
-.gh { margin-left:auto; font-size:11px; color:var(--muted); }
-.ghbtn { margin-left:auto; background:var(--panel); border:2px solid var(--line); color:var(--ink); font:inherit; font-size:11px; padding:5px 10px; cursor:pointer; text-decoration:none; }
-.ghbtn:hover { border-color:var(--ink); }
-.repos { margin-top:8px; border:1px solid var(--line); max-height:260px; overflow-y:auto; }
-.repo { display:flex; justify-content:space-between; align-items:center; padding:9px 11px; font-size:12px; cursor:pointer; border-bottom:1px solid var(--line); }
-.repo:hover { background:var(--panel); }
+@import "tailwindcss";
+
+/* ───────────────────────── Grid-Cast: concrete brutalist theme ─────────────────────────
+   A poured-concrete surface ruled with a faint grid, hard ink borders, offset drop
+   shadows, and an industrial type stack (Archivo / Archivo Black / Space Mono /
+   JetBrains Mono). Tailwind's zinc + indigo scales are remapped (INVERTED) so
+   utility classes pick up the theme. Font variables are provided by next/font. */
+
+:root {
+  --concrete: #cfccc4;
+  --concrete-2: #c4c0b7;
+  --grid: #bcb8af;
+  --ink: #111111;
+  --paper: #ffffff;
+  --muted: #6b675f;
+
+  --background: var(--concrete);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--concrete);
+  --secondary: var(--concrete-2);
+  --secondary-foreground: var(--ink);
+  --muted-bg: var(--concrete-2);
+  --muted-foreground: var(--muted);
+  --accent: var(--ink);
+  --accent-foreground: var(--concrete);
+  --destructive: #d6210f;
+  --destructive-foreground: #ffffff;
+  --border: var(--ink);
+  --input: var(--ink);
+  --ring: var(--ink);
+  --radius: 0rem;
+
+  --pending: #6b675f;
+  --queued: #b8860b;
+  --running: #1f7a3d;
+  --completed: #1f7a3d;
+  --failed: #d6210f;
+  --cancelled: #6b675f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-ink: var(--ink);
+  --color-concrete: var(--concrete);
+  --color-concrete-2: var(--concrete-2);
+  --color-paper: var(--paper);
+  --color-destructive: var(--destructive);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-jetbrains);
+  --font-display: var(--font-archivo-black);
+  --font-data: var(--font-space-mono);
+}
+
+@theme {
+  --color-zinc-50:  #15120f;
+  --color-zinc-100: #15120f;
+  --color-zinc-200: #2a2722;
+  --color-zinc-300: #3c3933;
+  --color-zinc-400: #56524b;
+  --color-zinc-500: #6b675f;
+  --color-zinc-600: #837e75;
+  --color-zinc-700: #a39e94;
+  --color-zinc-800: #c4c0b7;
+  --color-zinc-900: #ffffff;
+  --color-zinc-950: #f4f2ec;
+
+  --color-indigo-300: #56524b;
+  --color-indigo-400: #2a2722;
+  --color-indigo-500: #111111;
+  --color-indigo-600: #111111;
+  --color-indigo-700: #000000;
+  --color-indigo-800: #000000;
+  --color-indigo-900: #c4c0b7;
+  --color-indigo-950: #e7e4dc;
+}
+
+* {
+  border-color: var(--ink);
+  box-sizing: border-box;
+}
+
+html, body { height: 100%; }
+
+body {
+  background: var(--concrete);
+  color: var(--ink);
+  font-family: var(--font-archivo), "Archivo", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+::selection { background: var(--ink); color: var(--concrete); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--concrete); }
+::-webkit-scrollbar-thumb:hover { background: #000; }
+
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+.grid-bg {
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+.brutal-shadow { box-shadow: 9px 9px 0 var(--ink); }
+.brutal-shadow-sm { box-shadow: 5px 5px 0 var(--ink); }
+.brutal-shadow-muted { box-shadow: 9px 9px 0 var(--muted); }
+
+.brutal-press { transition: transform .1s ease, box-shadow .1s ease; }
+.brutal-press:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--muted); }
+.brutal-press:active { transform: translate(2px, 2px); box-shadow: none; }

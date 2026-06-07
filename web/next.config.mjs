@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // @libsql/client is a server-only native package — keep it out of the bundle.
-  serverExternalPackages: ["@libsql/client", "libsql"],
+  // The web app is a thin client of the Factory engine (REST + WebSocket); it
+  // talks to no database directly, so no server-only externals are needed.
+  // Pin the tracing root to this app (the monorepo has multiple lockfiles).
+  outputFileTracingRoot: import.meta.dirname,
 };
 
 export default nextConfig;

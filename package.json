@@ -2,14 +2,17 @@
   "name": "factory-engine-monorepo",
   "private": true,
   "version": "0.0.1",
-  "description": "Factory — local-first AI coding automation. Engine (libSQL + WebSocket) + UI, no cloud DB.",
+  "description": "Factory — local-first AI coding automation. Engine (libSQL + WebSocket live wire) + brutalist UI (local Vite + hosted Next), no cloud DB required.",
   "scripts": {
     "dev": "concurrently -n engine,ui -c blue,green \"npm:dev:engine\" \"npm:dev:ui\"",
     "dev:engine": "npm --prefix engine run dev",
     "dev:ui": "npm --prefix ui run dev",
+    "dev:web": "npm --prefix web run dev",
     "build:ui": "npm --prefix ui run build",
+    "build:web": "npm --prefix web run build",
     "start": "npm --prefix engine run start",
-    "setup": "npm install && npm --prefix engine install && npm --prefix ui install"
+    "typecheck": "npm --prefix engine run typecheck && npm --prefix ui run typecheck && npm --prefix web run typecheck",
+    "setup": "npm install && npm --prefix engine install && npm --prefix ui install && npm --prefix web install"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
