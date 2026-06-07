@@ -14,6 +14,22 @@ const PORT = Number(process.env.PORT ?? 8787);
 // with FACTORY_POLL_MS.
 const POLL_MS = Number(process.env.FACTORY_POLL_MS ?? 30_000);
 
+// Safe-by-default: the engine runs Claude with shell access and exposes a
+// terminal/exec endpoint, so binding to a public interface without an auth token
+// would hand anyone on the network a root shell. Refuse to start in that case.
+const HOST = process.env.FACTORY_HOST ?? "127.0.0.1";
+const isLoopback = HOST === "127.0.0.1" || HOST === "localhost" || HOST === "::1";
+if (!isLoopback && !authEnabled) {
+  console.error(
+    "\n✗ Refusing to start: FACTORY_HOST is set to a public interface (" + HOST + ") but\n" +
+    "  FACTORY_AUTH_TOKEN is not set. The engine runs coding agents and a shell\n" +
+    "  endpoint, so a public bind without a token is unsafe.\n\n" +
+    "  Fix: set FACTORY_AUTH_TOKEN to a long random secret, or bind to 127.0.0.1.\n" +
+    "  e.g.  FACTORY_AUTH_TOKEN=$(openssl rand -hex 24)\n",
+  );
+  process.exit(1);
+}
+
 await initSchema();
 startServer(PORT);
 

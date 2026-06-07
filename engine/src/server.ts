@@ -27,7 +27,10 @@ function redirect(res: http.ServerResponse, location: string): void {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UI_DIST = path.resolve(__dirname, "../../ui/dist");
+// Where the built UI lives. Defaults to the monorepo layout (engine/{src,dist} →
+// ../../ui/dist) but is overridable so packaged builds (CLI / desktop app) can
+// point at a bundled copy.
+const UI_DIST = process.env.FACTORY_UI_DIST ?? path.resolve(__dirname, "../../ui/dist");
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",

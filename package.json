@@ -10,7 +10,11 @@
     "dev:web": "npm --prefix web run dev",
     "build:ui": "npm --prefix ui run build",
     "build:web": "npm --prefix web run build",
+    "build:engine": "npm --prefix engine run build",
+    "build": "npm run build:ui && npm run build:engine",
+    "factory": "node cli/index.mjs",
     "start": "npm --prefix engine run start",
+    "start:dist": "npm --prefix engine run start:dist",
     "typecheck": "npm --prefix engine run typecheck && npm --prefix ui run typecheck && npm --prefix web run typecheck",
     "setup": "npm install && npm --prefix engine install && npm --prefix ui install && npm --prefix web install"
   },

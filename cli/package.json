@@ -1,0 +1,18 @@
+{
+  "name": "@factory/cli",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Factory — run the local AI software factory engine. Free, self-hosted, uses your own Claude login.",
+  "bin": {
+    "factory": "index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "engine",
+    "ui"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}
