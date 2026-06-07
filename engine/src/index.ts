@@ -1,28 +1,23 @@
 import "./env"; // load .env before anything reads process.env
-import { initSchema, syncNow, cloudSyncEnabled } from "./db";
+import { initSchema, cloudSyncEnabled } from "./db";
 import { startServer } from "./server";
 import { pickupPending } from "./runner";
 import { authEnabled } from "./auth";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const SYNC_MS = 4000;
+const POLL_MS = 4000;
 
 await initSchema();
 startServer(PORT);
 
-// Drive the engine: sync the Turso replica (if configured), then pick up any
-// pending jobs — including ones created remotely from the Vercel control app.
-// Also re-runs jobs left pending after a restart.
-async function tick(): Promise<void> {
-  if (cloudSyncEnabled) await syncNow();
-  await pickupPending();
-}
-await tick();
-setInterval(() => void tick(), SYNC_MS);
+// Poll for pending jobs — including ones created from the Vercel site (written
+// straight to the shared Turso DB). Also re-runs jobs left pending on restart.
+await pickupPending();
+setInterval(() => void pickupPending(), POLL_MS);
 
 console.log(
-  "Factory engine ready — libSQL + WebSocket" +
-    (cloudSyncEnabled ? " + Turso sync (control from anywhere)" : "") +
-    (authEnabled ? " · auth ON" : " · auth OFF (local only)") +
+  "Factory engine ready — " +
+    (cloudSyncEnabled ? "connected to Turso (control from anywhere)" : "local libSQL") +
+    (authEnabled ? " · auth ON" : "") +
     ".",
 );

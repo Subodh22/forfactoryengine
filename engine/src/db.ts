@@ -9,23 +9,18 @@ const dataDir = process.env.FACTORY_DATA_DIR ?? process.cwd();
 fs.mkdirSync(dataDir, { recursive: true }); // ensure the data dir exists
 const dbPath = path.join(dataDir, "factory.db");
 
-// Local file by default. If a Turso cloud DB is configured, this becomes an
-// EMBEDDED REPLICA: reads/writes still hit the local file (instant, unmetered),
-// and changes sync to the Turso copy that a phone/hosted UI reads from anywhere.
-const syncUrl = process.env.TURSO_DATABASE_URL?.trim();
+// When Turso is configured, connect DIRECTLY to the cloud DB — the engine and the
+// Vercel app share one live database. (Embedded-replica sync proved fragile; a
+// direct remote connection is simpler and the engine's DB ops are light.)
+// Otherwise, a local file for offline/local-only use.
+const tursoUrl = process.env.TURSO_DATABASE_URL?.trim();
 const authToken = process.env.TURSO_AUTH_TOKEN?.trim();
 
-export const db: Client = createClient(
-  syncUrl ? { url: `file:${dbPath}`, syncUrl, authToken } : { url: `file:${dbPath}` },
-);
+export const db: Client = tursoUrl
+  ? createClient({ url: tursoUrl, authToken })
+  : createClient({ url: `file:${dbPath}` });
 
-export const cloudSyncEnabled = Boolean(syncUrl);
-
-/** Pull/push the embedded replica against the Turso copy. No-op when local-only. */
-export async function syncNow(): Promise<void> {
-  if (!syncUrl) return;
-  try { await db.sync(); } catch (err) { console.error("[sync]", String(err)); }
-}
+export const cloudSyncEnabled = Boolean(tursoUrl);
 
 export interface Project {
   id: string;
