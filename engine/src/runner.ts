@@ -1,57 +1,129 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getJob, getProject, getSetting, patchJob, listJobsByStatus, type Job } from "./db";
-import { broadcast } from "./events";
-import { createClaudeSession } from "./agent/claude-runner";
-import { createWorktree, removeWorktree, getChangedFiles, commitOnly, pushBranch, ensureRepoCloned } from "./agent/worktree";
-import { buildRepoMap } from "./agent/repo-map";
+import {
+  getJob, getProject, getSetting, listJobsByStatus, updateUsage, patchJob, updateProject, type Job, type Project,
+} from "./db";
+import { emitOutput, emitChat } from "./events";
+import { updateStatus } from "./status";
+import { createClaudeSession, type ClaudeSession, type ClaudeSessionOptions, type TurnResult } from "./agent/claude-runner";
+import {
+  createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect, ensureRepoCloned,
+  ensureEpicWorktree, commitOnly, mergeIntoBranch, pushBranch,
+} from "./agent/worktree";
 import { createPR } from "./agent/github";
+import { buildRepoMap } from "./agent/repo-map";
+import { parseDataUrl, safeFilename } from "./attachments";
+import { sendJobNotification } from "./notify";
+import { planEpic } from "./delegator";
+import { scheduleDelegationCheck } from "./delegator-scheduler";
 
-// Simple in-process job queue with bounded concurrency. The engine owns
-// execution; no external poller needed.
-const MAX_CONCURRENT = 3;
+// ── In-process queue ─────────────────────────────────────────────────────────
+const MAX_CONCURRENT = Number(process.env.FACTORY_MAX_CONCURRENT ?? 3);
 const queue: string[] = [];
 const active = new Set<string>();
-// Every job id we've ever taken responsibility for — prevents the cloud-pickup
-// sweep from enqueuing a job twice (or re-running one already in flight).
-const seen = new Set<string>();
 
 export function enqueue(jobId: string): void {
-  if (seen.has(jobId)) return;
-  seen.add(jobId);
+  if (active.has(jobId) || queue.includes(jobId)) return;
   queue.push(jobId);
   pump();
-}
-
-/**
- * Enqueue any "pending" jobs we haven't picked up yet. These are jobs created
- * remotely (e.g. from the Vercel control app, written to Turso and synced down)
- * — or our own jobs left pending after a restart. Called on the sync loop.
- */
-export async function pickupPending(): Promise<void> {
-  const pending = await listJobsByStatus("pending");
-  for (const job of pending) enqueue(job.id);
 }
 
 function pump(): void {
   while (active.size < MAX_CONCURRENT && queue.length > 0) {
     const jobId = queue.shift()!;
     active.add(jobId);
-    void runJob(jobId).finally(() => {
+    void startJob(jobId).finally(() => {
       active.delete(jobId);
       pump();
     });
   }
 }
 
-async function updateStatus(
-  jobId: string,
-  status: Job["status"],
-  fields: Partial<Pick<Job, "branch" | "prUrl" | "error">> = {},
-): Promise<void> {
-  await patchJob(jobId, { status, ...fields });
-  const job = await getJob(jobId);
-  if (job) broadcast({ type: "job.updated", job });
+/** Enqueue any "queued" jobs we haven't picked up — remote-created (Turso) jobs,
+ *  scheduler-promoted children, or our own jobs left queued after a restart. */
+export async function pickupQueued(): Promise<void> {
+  for (const job of await listJobsByStatus("queued")) enqueue(job.id);
+  if ((await listJobsByStatus("delegating")).length) scheduleDelegationCheck();
+}
+
+/** Recover jobs orphaned by a crash: anything stuck "running" can't really be in
+ *  flight (this process just booted), so requeue it. */
+export async function recoverOrphans(): Promise<void> {
+  for (const job of await listJobsByStatus("running")) {
+    await updateStatus(job.id, "queued").catch(() => {});
+    enqueue(job.id);
+  }
+}
+
+// ── Live session state ───────────────────────────────────────────────────────
+const activeSessions = new Map<string, ClaudeSession>();
+const processing = new Set<string>();
+const cancelledJobs = new Set<string>();
+
+interface ChildContext { parentJobId: string; epicBranch: string; epicWorktreePath: string }
+interface LiveContext {
+  worktreePath: string;
+  branch: string;
+  projectId: string;
+  project: Project;
+  title: string;
+  busy: boolean;
+  queue: { text: string; images: string[] }[];
+  child?: ChildContext;
+}
+const liveContext = new Map<string, LiveContext>();
+
+// Serialize the merge-into-epic step per epic so concurrent child tasks don't
+// race on the shared integration branch.
+const epicLocks = new Map<string, Promise<unknown>>();
+function withEpicLock<T>(epicId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = epicLocks.get(epicId) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(fn);
+  epicLocks.set(epicId, next.catch(() => {}));
+  return next;
+}
+
+// Per-project session continuity — carry the session id across jobs so Claude
+// doesn't cold-start every task. Reset when tokens approach the cap.
+const TOKEN_RESUME_CAP = 60_000;
+interface ProjectSession { sessionId: string; inputTokens: number }
+const projectSessions = new Map<string, ProjectSession>();
+
+function log(jobId: string, msg: string) {
+  emitOutput(jobId, `[factory] ${msg}\n`);
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Save base64 attachments to the worktree, return message text with their
+ *  paths prepended so Claude can read them. */
+function buildMessageWithAttachments(text: string, attachments: string[], worktreePath: string): string {
+  if (!attachments.length) return text;
+  const images: string[] = [];
+  const files: string[] = [];
+  for (const dataUrl of attachments) {
+    const parsed = parseDataUrl(dataUrl);
+    if (!parsed) continue;
+    const ext = parsed.mime.split("/")[1] || "bin";
+    const name = parsed.name ? safeFilename(parsed.name) : `attachment.${ext}`;
+    const unique = `_factory_${Date.now()}_${Math.random().toString(36).slice(2)}_${name}`;
+    const dest = path.join(worktreePath, unique);
+    fs.writeFileSync(dest, Buffer.from(parsed.base64, "base64"));
+    (parsed.isImage ? images : files).push(dest);
+  }
+  const refs: string[] = [];
+  images.forEach((p, i) => refs.push(`Image ${i + 1}: ${p}`));
+  files.forEach((p, i) => refs.push(`File ${i + 1}: ${p}`));
+  if (!refs.length) return text;
+  return `${refs.join("\n")}\n\n${text}`;
+}
+
+/** Copy the project's .env into a worktree so agents see the same env vars the
+ *  user manages in the UI (git worktrees don't include untracked files). */
+function copyEnvToWorktree(repoPath: string, worktreePath: string) {
+  const src = path.join(repoPath, ".env");
+  if (!fs.existsSync(src)) return;
+  try { fs.copyFileSync(src, path.join(worktreePath, ".env")); } catch { /* non-fatal */ }
 }
 
 function readClaudeMd(dir: string): string | null {
@@ -59,79 +131,406 @@ function readClaudeMd(dir: string): string | null {
   try { return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null; } catch { return null; }
 }
 
-async function runJob(jobId: string): Promise<void> {
-  const job = await getJob(jobId);
-  if (!job) return;
-  const project = await getProject(job.projectId);
-  if (!project) {
-    await updateStatus(jobId, "failed", { error: "project not found" });
+function sessionOptsFor(job: Job): ClaudeSessionOptions {
+  return {
+    ...(job.model ? { model: job.model } : {}),
+    ...(job.effort ? { effort: job.effort as ClaudeSessionOptions["effort"] } : {}),
+  };
+}
+
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 800): Promise<T> {
+  for (let i = 0; i < retries; i++) {
+    try { return await fn(); }
+    catch (err) {
+      if (i === retries - 1) throw err;
+      await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+    }
+  }
+  throw new Error("unreachable");
+}
+
+// ── Job execution ────────────────────────────────────────────────────────────
+
+export async function startJob(jobId: string): Promise<void> {
+  if (processing.has(jobId)) return;
+  processing.add(jobId);
+
+  let worktreePath: string | undefined;
+  let jobTitle: string | undefined;
+  let project: Project | null = null;
+
+  try {
+    const job = await withRetry(() => getJob(jobId));
+    if (!job) { processing.delete(jobId); return; }
+    if (job.status === "cancelled") { processing.delete(jobId); return; }
+    jobTitle = job.title;
+    project = await withRetry(() => getProject(job.projectId));
+    if (!project) {
+      await updateStatus(jobId, "failed", { error: "project not found" });
+      processing.delete(jobId);
+      return;
+    }
+
+    await updateStatus(jobId, "running");
+
+    // Make sure the repo lives on this machine (clones it on first run when the
+    // project arrived with no usable localPath, e.g. created from a remote UI).
+    const resolvedPath = ensureRepoCloned({
+      repo: project.repo, localPath: project.localPath, githubToken: project.githubToken,
+    });
+    if (resolvedPath !== project.localPath) {
+      log(jobId, `Cloned ${project.repo} to ${resolvedPath}`);
+      await updateProject(job.projectId, { localPath: resolvedPath }).catch(() => {});
+      project = { ...project, localPath: resolvedPath };
+    }
+
+    // -- Epic: plan & split, then hand to the scheduler ----------------------
+    if (job.kind === "epic") {
+      if (!job.delegatorPlan) {
+        await planEpic(job, project);
+        scheduleDelegationCheck();
+      }
+      processing.delete(jobId);
+      return;
+    }
+
+    // -- Child task: base off (and merge into) the epic's integration branch --
+    let baseBranch = project.defaultBranch;
+    let childCtx: ChildContext | undefined;
+    const isChild = !!job.parentJobId;
+    if (job.parentJobId) {
+      const parent = await withRetry(() => getJob(job.parentJobId));
+      const epic = ensureEpicWorktree(project.localPath, job.parentJobId, project.defaultBranch);
+      baseBranch = parent?.branch || epic.branch;
+      childCtx = { parentJobId: job.parentJobId, epicBranch: epic.branch, epicWorktreePath: epic.worktreePath };
+    }
+
+    log(jobId, `Job started — "${job.title}"`);
+
+    // Worktree (reuse an existing one if a previous run left it).
+    let branch: string;
+    if (job.worktreePath && fs.existsSync(job.worktreePath)) {
+      worktreePath = job.worktreePath;
+      branch = job.branch || `job/${jobId}`;
+      log(jobId, `Reusing worktree: ${worktreePath}`);
+    } else {
+      log(jobId, `Repo: ${project.localPath}`);
+      log(jobId, "Creating git worktree…");
+      const wt = createWorktree(project.localPath, jobId, baseBranch);
+      worktreePath = wt.worktreePath;
+      branch = wt.branch;
+      copyEnvToWorktree(project.localPath, worktreePath);
+      log(jobId, `Worktree ready: ${worktreePath}  (branch ${branch})`);
+      await updateStatus(jobId, "running", { worktreePath, branch });
+    }
+
+    log(jobId, "Launching Claude Code CLI...");
+    log(jobId, "-".repeat(40));
+
+    // Resume the project's last session when safely below the token cap. Child
+    // tasks stay isolated so parallel children don't contend on one session.
+    const prevSession = isChild ? undefined : projectSessions.get(job.projectId);
+    const resumeId = prevSession && prevSession.inputTokens < TOKEN_RESUME_CAP ? prevSession.sessionId : undefined;
+    if (resumeId) log(jobId, `Resuming project session ${resumeId.slice(0, 8)}…`);
+
+    const opts = sessionOptsFor(job);
+    if (job.model) log(jobId, `Model: ${job.model}`);
+    if (job.effort) log(jobId, `Effort: ${job.effort}`);
+
+    let session = createClaudeSession(worktreePath, resumeId, opts);
+    activeSessions.set(jobId, session);
+    session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+    session.onChunk((text) => emitOutput(jobId, text));
+
+    const baseRules = project.agentRules ? `${project.agentRules}\n\n` : "";
+    const hasClaude = readClaudeMd(worktreePath) !== null;
+    const claudeHint = hasClaude
+      ? "Read CLAUDE.md before starting.\n\n"
+      : "No CLAUDE.md found — create one first, then do the task.\n\n";
+    const repoMap = buildRepoMap(worktreePath);
+    const effortNote = job.effort ? `Apply ${job.effort} reasoning effort to this task.\n\n` : "";
+    const resumeNote = resumeId ? `You are continuing work on this project in a new worktree at: ${worktreePath}\n\n` : "";
+    const systemContext = `${baseRules}${claudeHint}${effortNote}${resumeNote}${repoMap}\n---\n\n`;
+
+    const promptWithImages = buildMessageWithAttachments(job.prompt, job.images, worktreePath);
+    let turn = await session.sendMessage(systemContext + promptWithImages);
+    await updateUsage(jobId, turn.inputTokens, turn.outputTokens, turn.costUsd);
+
+    // If resume was stale ("No conversation found"), retry fresh immediately.
+    const returnedNothing = !turn.assistantText.trim() && !turn.resultText.trim();
+    if (returnedNothing && resumeId) {
+      projectSessions.delete(job.projectId);
+      log(jobId, "Stale session, retrying fresh...");
+      cleanupSession(jobId);
+      session = createClaudeSession(worktreePath, undefined, opts);
+      activeSessions.set(jobId, session);
+      session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+      session.onChunk((text) => emitOutput(jobId, text));
+      const freshContext = `${baseRules}${claudeHint}${effortNote}${repoMap}\n---\n\n`;
+      turn = await session.sendMessage(freshContext + promptWithImages);
+      await updateUsage(jobId, turn.inputTokens, turn.outputTokens, turn.costUsd);
+    }
+    const sid = session.getSessionId();
+    if (sid && !isChild) projectSessions.set(job.projectId, { sessionId: sid, inputTokens: turn.inputTokens });
+
+    if (reapIfCancelled(jobId, worktreePath, project)) return;
+    await handleTurnResult({ jobId, title: job.title, turn, worktreePath, branch, projectId: job.projectId, project, child: childCtx });
+    processing.delete(jobId);
+  } catch (err) {
+    if (reapIfCancelled(jobId, worktreePath, project)) return;
+    processing.delete(jobId);
+    cleanupSession(jobId);
+    const msg = String(err);
+    console.error(`[startJob] unhandled error for ${jobId}: ${msg}`);
+    log(jobId, `FATAL: ${msg}`);
+    await updateStatus(jobId, "failed", { error: msg }).catch(() => {});
+    await sendJobNotification({ jobId, title: jobTitle, status: "failed", projectName: project?.name, error: msg }).catch(() => {});
+    if (worktreePath && project) {
+      try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
+    }
+    scheduleDelegationCheck();
+  }
+}
+
+function cleanupSession(jobId: string) {
+  const session = activeSessions.get(jobId);
+  if (session) { session.cancel(); activeSessions.delete(jobId); }
+  liveContext.delete(jobId);
+}
+
+function reapIfCancelled(jobId: string, worktreePath: string | undefined, project: { localPath: string } | null): boolean {
+  if (!cancelledJobs.has(jobId)) return false;
+  cancelledJobs.delete(jobId);
+  processing.delete(jobId);
+  cleanupSession(jobId);
+  log(jobId, "Stopped by user.");
+  if (worktreePath && project) {
+    try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
+  }
+  return true;
+}
+
+function responseHasQuestion(text: string): boolean {
+  const lines = text.trim().split("\n").filter((l) => l.trim());
+  if (!lines.length) return false;
+  return lines[lines.length - 1].trim().endsWith("?");
+}
+
+interface TurnResultArgs {
+  jobId: string;
+  title: string;
+  turn: TurnResult;
+  worktreePath: string;
+  branch: string;
+  projectId: string;
+  project: Project;
+  child?: ChildContext;
+}
+
+async function handleTurnResult({ jobId, title, turn, worktreePath, branch, projectId, project, child }: TurnResultArgs): Promise<void> {
+  log(jobId, "-".repeat(40));
+
+  const claudeResponse = turn.assistantText.trim() || turn.resultText.trim();
+  if (claudeResponse) emitChat(jobId, "assistant", claudeResponse);
+
+  const changedFiles = getChangedFiles(worktreePath);
+  log(jobId, `Changed files: ${changedFiles.length > 0 ? changedFiles.join(", ") : "none"}`);
+
+  if (changedFiles.length === 0) {
+    // A question with no changes → wait for the user to reply in the chat panel.
+    if (responseHasQuestion(claudeResponse)) {
+      const existing = liveContext.get(jobId);
+      liveContext.set(jobId, {
+        worktreePath, branch, projectId, project, title,
+        busy: existing?.busy ?? false, queue: existing?.queue ?? [], child,
+      });
+      await updateStatus(jobId, "waiting_for_input");
+      log(jobId, "Waiting for your reply — answer in the chat panel to continue.");
+      return; // session stays alive
+    }
+    cleanupSession(jobId);
+    await updateStatus(jobId, "completed");
+    log(jobId, "Job completed successfully.");
+    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name }).catch(() => {});
+    removeWorktree(project.localPath, worktreePath);
+    if (child) scheduleDelegationCheck();
     return;
   }
 
-  const log = (msg: string) => broadcast({ type: "job.output", jobId, chunk: `[factory] ${msg}\n` });
-  let worktreePath: string | undefined;
+  // Claude made changes.
+  cleanupSession(jobId);
+
+  // Delegated child task: commit on its branch, merge into the epic branch.
+  if (child) {
+    try {
+      log(jobId, `Committing subtask to ${branch}...`);
+      const committed = commitOnly(worktreePath, `feat: ${title}\n\nAutomated by Factory (delegated)`);
+      if (committed) {
+        await withEpicLock(child.parentJobId, async () =>
+          mergeIntoBranch(child.epicWorktreePath, branch, `merge ${branch} into ${child.epicBranch}`));
+        log(jobId, `Merged subtask into ${child.epicBranch}.`);
+      } else {
+        log(jobId, "No changes to merge.");
+      }
+      await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
+      log(jobId, "Subtask completed.");
+    } catch (err) {
+      const msg = String(err);
+      log(jobId, `ERROR merging subtask: ${msg}`);
+      await updateStatus(jobId, "failed", { error: msg });
+    } finally {
+      removeWorktree(project.localPath, worktreePath);
+      scheduleDelegationCheck();
+    }
+    return;
+  }
+
+  // Plain job: open a PR if we have a GitHub repo + token, else push directly.
+  try {
+    const token = project.githubToken || (await getSetting("githubToken")) || "";
+    if (project.repo.includes("/") && token) {
+      log(jobId, `Committing and opening a PR…`);
+      const committed = commitOnly(worktreePath, `feat: ${title}\n\nAutomated by Factory`);
+      if (committed) {
+        pushBranch(worktreePath, branch);
+        const [owner, repo] = project.repo.split("/");
+        const pr = await createPR(token, owner!, repo!, branch, project.defaultBranch, title, "Automated by Factory.");
+        await updateStatus(jobId, "completed", { touchedPaths: changedFiles, prUrl: pr.url, prNumber: pr.number });
+        log(jobId, `Opened PR #${pr.number}: ${pr.url}`);
+      } else {
+        await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
+        log(jobId, "Nothing to commit.");
+      }
+    } else {
+      log(jobId, `Pushing changes to ${project.defaultBranch}...`);
+      commitAndPushDirect(worktreePath, `feat: ${title}\n\nAutomated by Factory`, project.defaultBranch);
+      await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
+      log(jobId, `Merged to ${project.defaultBranch}.`);
+    }
+    log(jobId, "Job completed successfully.");
+    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, changedFiles }).catch(() => {});
+  } catch (err) {
+    const msg = String(err);
+    log(jobId, `ERROR during commit/push: ${msg}`);
+    await updateStatus(jobId, "failed", { error: msg });
+    await sendJobNotification({ jobId, title, status: "failed", projectName: project.name, error: msg }).catch(() => {});
+  } finally {
+    removeWorktree(project.localPath, worktreePath);
+  }
+}
+
+// ── Cancellation ─────────────────────────────────────────────────────────────
+
+export function cancelJob(jobId: string): void {
+  if (processing.has(jobId)) cancelledJobs.add(jobId);
+  cleanupSession(jobId);
+  processing.delete(jobId);
+  const i = queue.indexOf(jobId);
+  if (i >= 0) queue.splice(i, 1);
+}
+
+export function getActiveJobIds(): string[] {
+  return Array.from(new Set([...processing, ...activeSessions.keys()]));
+}
+
+// ── Ephemeral chat ───────────────────────────────────────────────────────────
+
+/** Entry point for a user reply (POST /api/reply/:jobId). Returns true if the
+ *  reply was accepted (a live session exists, or a finished job can be resumed). */
+export async function deliverReply(jobId: string, text: string, images: string[]): Promise<boolean> {
+  const ctx = liveContext.get(jobId);
+  if (ctx && activeSessions.has(jobId)) {
+    ctx.queue.push({ text, images });
+    if (!ctx.busy) void drainReplies(jobId);
+    return true;
+  }
+  return continueJob(jobId, text, images);
+}
+
+async function drainReplies(jobId: string): Promise<void> {
+  const session = activeSessions.get(jobId);
+  const ctx = liveContext.get(jobId);
+  if (!session || !ctx || ctx.busy) return;
+
+  ctx.busy = true;
+  processing.add(jobId);
 
   try {
-    await updateStatus(jobId, "running");
+    await updateStatus(jobId, "running", { worktreePath: ctx.worktreePath, branch: ctx.branch });
 
-    // Make sure the repo is on this machine (clones it if a remote is configured).
-    const localPath = ensureRepoCloned({ repo: project.repo, localPath: project.localPath, githubToken: project.githubToken });
-    log(`Repo: ${localPath}`);
-
-    const wt = createWorktree(localPath, jobId, project.defaultBranch);
-    worktreePath = wt.worktreePath;
-    await updateStatus(jobId, "running", { branch: wt.branch });
-    log(`Worktree: ${wt.worktreePath}  (branch ${wt.branch})`);
-    log("-".repeat(40));
-
-    const session = createClaudeSession(worktreePath);
-    session.onChunk((text) => broadcast({ type: "job.output", jobId, chunk: text }));
-
-    const rules = project.agentRules ? `${project.agentRules}\n\n` : "";
-    const claudeHint = readClaudeMd(worktreePath)
-      ? "Read CLAUDE.md before starting.\n\n"
-      : "No CLAUDE.md found — create one if useful, then do the task.\n\n";
-    const repoMap = buildRepoMap(worktreePath);
-    const message = `${rules}${claudeHint}${repoMap}\n---\n\n${job.prompt}`;
-
-    const turn = await session.sendMessage(message);
-    log("-".repeat(40));
-
-    const changed = getChangedFiles(worktreePath);
-    log(`Changed files: ${changed.length ? changed.join(", ") : "none"}`);
-
-    let prUrl = "";
-    if (changed.length > 0) {
-      const committed = commitOnly(worktreePath, `feat: ${job.title}\n\nAutomated by Factory`);
-      log(committed ? `Committed to ${wt.branch}.` : "Nothing to commit.");
-
-      // If the project is backed by a GitHub repo and we have a token (per-project
-      // or the connected account), push the branch and open a PR.
-      const token = project.githubToken || (await getSetting("githubToken")) || "";
-      if (committed && project.repo.includes("/") && token) {
-        try {
-          log(`Pushing ${wt.branch} and opening a PR…`);
-          pushBranch(worktreePath, wt.branch);
-          const [owner, repo] = project.repo.split("/");
-          const pr = await createPR(token, owner!, repo!, wt.branch, project.defaultBranch, job.title, "Automated by Factory.");
-          prUrl = pr.url;
-          log(`Opened PR #${pr.number}: ${pr.url}`);
-        } catch (err) {
-          log(`Note: couldn't open a PR (${String(err)}). Work is committed on ${wt.branch}.`);
-        }
-      }
-    } else if (!turn.assistantText.trim() && !turn.resultText.trim()) {
-      throw new Error("Claude produced no output");
+    let turn: TurnResult | null = null;
+    while (ctx.queue.length) {
+      if (reapIfCancelled(jobId, ctx.worktreePath, ctx.project)) return;
+      const pending = ctx.queue.splice(0, ctx.queue.length);
+      const combined = pending.map((p) => p.text).filter(Boolean).join("\n\n");
+      const allImages = pending.flatMap((p) => p.images);
+      log(jobId, `User replied: "${combined}"`);
+      log(jobId, "-".repeat(40));
+      const message = buildMessageWithAttachments(combined, allImages, ctx.worktreePath);
+      turn = await session.sendMessage(message);
+      await updateUsage(jobId, turn.inputTokens, turn.outputTokens, turn.costUsd);
+      const sid = session.getSessionId();
+      if (sid) projectSessions.set(ctx.projectId, { sessionId: sid, inputTokens: turn.inputTokens });
     }
 
-    await updateStatus(jobId, "done", prUrl ? { prUrl } : {});
-    log("Job complete.");
+    if (!turn) return;
+    if (reapIfCancelled(jobId, ctx.worktreePath, ctx.project)) return;
+    await handleTurnResult({
+      jobId, title: ctx.title, turn, worktreePath: ctx.worktreePath, branch: ctx.branch,
+      projectId: ctx.projectId, project: ctx.project, child: ctx.child,
+    });
   } catch (err) {
-    await updateStatus(jobId, "failed", { error: String(err) });
-    broadcast({ type: "job.output", jobId, chunk: `[factory] FAILED: ${String(err)}\n` });
+    if (reapIfCancelled(jobId, ctx.worktreePath, ctx.project)) return;
+    const msg = String(err);
+    log(jobId, `FATAL: ${msg}`);
+    cleanupSession(jobId);
+    await updateStatus(jobId, "failed", { error: msg }).catch(() => {});
   } finally {
-    if (worktreePath && project) {
-      try { removeWorktree(project.localPath, worktreePath); } catch { /* best-effort */ }
-    }
+    processing.delete(jobId);
+    const c = liveContext.get(jobId);
+    if (c) { c.busy = false; if (c.queue.length) void drainReplies(jobId); }
   }
+}
+
+/** Resume a finished job by its saved session id so the user can keep chatting. */
+async function continueJob(jobId: string, text: string, images: string[]): Promise<boolean> {
+  if (activeSessions.has(jobId)) return false;
+
+  const job = await getJob(jobId).catch(() => null);
+  if (!job || !job.sessionId) return false;
+  if (job.parentJobId) return false; // child tasks aren't chat-resumable
+  const project = await getProject(job.projectId).catch(() => null);
+  if (!project) return false;
+
+  let worktreePath: string;
+  let branch: string;
+  try {
+    if (job.worktreePath && fs.existsSync(job.worktreePath)) {
+      worktreePath = job.worktreePath;
+      branch = job.branch || `job/${jobId}`;
+    } else {
+      const wt = createWorktree(project.localPath, jobId, project.defaultBranch);
+      worktreePath = wt.worktreePath;
+      branch = wt.branch;
+      copyEnvToWorktree(project.localPath, worktreePath);
+    }
+  } catch (err) {
+    log(jobId, `Could not reopen worktree to continue: ${String(err)}`);
+    return false;
+  }
+
+  await updateStatus(jobId, "running", { worktreePath, branch }).catch(() => {});
+  log(jobId, `Resuming session ${job.sessionId.slice(0, 8)}… to continue the conversation.`);
+
+  const session = createClaudeSession(worktreePath, job.sessionId, sessionOptsFor(job));
+  activeSessions.set(jobId, session);
+  session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+  session.onChunk((t) => emitOutput(jobId, t));
+
+  liveContext.set(jobId, {
+    worktreePath, branch, projectId: job.projectId, project, title: job.title,
+    busy: false, queue: [{ text, images }],
+  });
+  void drainReplies(jobId);
+  return true;
 }

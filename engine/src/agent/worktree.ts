@@ -110,6 +110,13 @@ export function createWorktree(repoPath: string, jobId: string, baseBranch: stri
   const worktreePath = path.join(normalizedRepo, ".worktrees", jobId);
   const worktreesDir = path.join(normalizedRepo, ".worktrees");
 
+  // A previous engine that crashed mid-job leaves this worktree behind — its
+  // cleanup `finally` never ran. `git worktree add` then fails with "already
+  // exists". Clear any stale copy first so a recovered job starts clean.
+  git(["worktree", "remove", "--force", worktreePath], normalizedRepo);
+  git(["worktree", "prune"], normalizedRepo);
+  if (repoExists(worktreePath)) fs.rmSync(worktreePath, { recursive: true, force: true });
+
   try {
     fs.mkdirSync(worktreesDir, { recursive: true });
   } catch {

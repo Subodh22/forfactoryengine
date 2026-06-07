@@ -44,3 +44,27 @@ export async function createPR(
   const { data } = await octo(token).pulls.create({ owner, repo, head, base, title, body });
   return { url: data.html_url, number: data.number };
 }
+
+export interface CreatedRepo { fullName: string; defaultBranch: string; htmlUrl: string }
+
+/** Create a brand-new repo on the authenticated user's account, seeded with an
+ *  initial commit so it's immediately cloneable. */
+export async function createRepo(
+  token: string, name: string, description: string, isPrivate: boolean,
+): Promise<CreatedRepo> {
+  try {
+    const { data } = await octo(token).repos.createForAuthenticatedUser({
+      name,
+      description: description || undefined,
+      private: isPrivate,
+      auto_init: true,
+    });
+    return { fullName: data.full_name, defaultBranch: data.default_branch, htmlUrl: data.html_url };
+  } catch (err: unknown) {
+    const e = err as { status?: number; message?: string };
+    if (e.status === 422 && /already exists/i.test(e.message ?? "")) {
+      throw new Error(`A repository named "${name}" already exists on your GitHub account. Choose a different name.`);
+    }
+    throw err;
+  }
+}

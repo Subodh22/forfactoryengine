@@ -21,6 +21,14 @@ export interface ClaudeSession {
   cancel: () => void;
 }
 
+export interface ClaudeSessionOptions {
+  /** "opus" | "sonnet" | "haiku" — passed through as `--model`. */
+  model?: string;
+  /** Reasoning effort hint — surfaced to the agent as a system note (the CLI has
+   *  no dedicated flag, so we prepend a one-line directive to the first turn). */
+  effort?: "low" | "medium" | "high" | "max";
+}
+
 const isWin = process.platform === "win32";
 
 function formatToolUse(name: string, input: Record<string, unknown>): string {
@@ -78,7 +86,7 @@ function formatToolUse(name: string, input: Record<string, unknown>): string {
  * Chunks are prefixed with \x00tool\x00 / \x00bash\x00 / \x00stderr\x00
  * so the UI can colour-code them.
  */
-export function createClaudeSession(cwd: string, resumeSessionId?: string): ClaudeSession {
+export function createClaudeSession(cwd: string, resumeSessionId?: string, options: ClaudeSessionOptions = {}): ClaudeSession {
   let currentSessionId: string | null = resumeSessionId ?? null;
   let chunkHandler: ((text: string) => void) | null = null;
   let sessionIdHandler: ((id: string) => void) | null = null;
@@ -102,6 +110,9 @@ export function createClaudeSession(cwd: string, resumeSessionId?: string): Clau
       ];
       if (currentSessionId) {
         args.push("--resume", currentSessionId);
+      }
+      if (options.model) {
+        args.push("--model", options.model);
       }
 
       const proc = spawn("claude", args, {
