@@ -1,75 +1,143 @@
+@import "tailwindcss";
+
+/* ───────────────────────── Grid-Cast: concrete brutalist theme ─────────────────────────
+   A light, high-contrast "concrete grid" reskin: a poured-concrete surface ruled
+   with a faint grid, hard ink borders, offset drop shadows, and an industrial type
+   stack (Archivo / Archivo Black / Space Mono / JetBrains Mono). The accent is
+   ink — black fills mark anything "active". The cohesion trick: we remap Tailwind's
+   `zinc` and `indigo` scales (INVERTED) so utility classes pick up the theme. */
+
 :root {
-  --ink: #e7e3d8;
-  --paper: #14161b;
-  --panel: #1b1e25;
-  --muted: #8b8f98;
-  --line: #2a2e37;
+  --concrete: #cfccc4;
+  --concrete-2: #c4c0b7;
+  --grid: #bcb8af;
+  --ink: #111111;
+  --paper: #ffffff;
+  --muted: #6b675f;
+
+  --background: var(--concrete);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--concrete);
+  --secondary: var(--concrete-2);
+  --secondary-foreground: var(--ink);
+  --muted-bg: var(--concrete-2);
+  --muted-foreground: var(--muted);
+  --accent: var(--ink);
+  --accent-foreground: var(--concrete);
+  --destructive: #d6210f;
+  --destructive-foreground: #ffffff;
+  --border: var(--ink);
+  --input: var(--ink);
+  --ring: var(--ink);
+  --radius: 0rem;
+
+  --pending: #6b675f;
+  --queued: #b8860b;
+  --running: #1f7a3d;
+  --completed: #1f7a3d;
+  --failed: #d6210f;
+  --cancelled: #6b675f;
+
+  /* Industrial type stack — loaded via Google Fonts in index.html. */
+  --font-archivo: "Archivo", system-ui, sans-serif;
+  --font-archivo-black: "Archivo Black", system-ui, sans-serif;
+  --font-space-mono: "Space Mono", ui-monospace, monospace;
+  --font-jetbrains: "JetBrains Mono", ui-monospace, monospace;
 }
-* { box-sizing: border-box; }
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-ink: var(--ink);
+  --color-concrete: var(--concrete);
+  --color-concrete-2: var(--concrete-2);
+  --color-paper: var(--paper);
+  --color-destructive: var(--destructive);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-jetbrains);
+  --font-display: var(--font-archivo-black);
+  --font-data: var(--font-space-mono);
+}
+
+/* Inverted neutral ramp — low numbers ink, high numbers paper. */
+@theme {
+  --color-zinc-50:  #15120f;
+  --color-zinc-100: #15120f;
+  --color-zinc-200: #2a2722;
+  --color-zinc-300: #3c3933;
+  --color-zinc-400: #56524b;
+  --color-zinc-500: #6b675f;
+  --color-zinc-600: #837e75;
+  --color-zinc-700: #a39e94;
+  --color-zinc-800: #c4c0b7;
+  --color-zinc-900: #ffffff;
+  --color-zinc-950: #f4f2ec;
+
+  --color-indigo-300: #56524b;
+  --color-indigo-400: #2a2722;
+  --color-indigo-500: #111111;
+  --color-indigo-600: #111111;
+  --color-indigo-700: #000000;
+  --color-indigo-800: #000000;
+  --color-indigo-900: #c4c0b7;
+  --color-indigo-950: #e7e4dc;
+}
+
+* {
+  border-color: var(--ink);
+  box-sizing: border-box;
+}
+
+html, body, #root { height: 100%; }
+
 body {
-  margin: 0;
-  background: var(--paper);
+  background: var(--concrete);
   color: var(--ink);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-}
-.wrap { max-width: 760px; margin: 0 auto; padding: 28px 18px; }
-
-header { display: flex; align-items: center; gap: 10px; padding-bottom: 16px; border-bottom: 2px solid var(--line); }
-header b { font-size: 15px; letter-spacing: 1px; }
-.logo { width: 14px; height: 14px; background: var(--ink); display: inline-block; }
-.tag { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-.live { margin-left: auto; font-size: 11px; color: #3bd16f; }
-
-.composer { display: flex; gap: 8px; margin: 18px 0; }
-.composer input {
-  flex: 1; background: var(--panel); border: 2px solid var(--line); color: var(--ink);
-  padding: 10px 12px; font: inherit; font-size: 13px; outline: none;
-}
-.composer input:focus { border-color: var(--ink); }
-.composer button {
-  background: var(--ink); color: var(--paper); border: none; padding: 0 18px;
-  font: inherit; font-weight: 700; text-transform: uppercase; font-size: 12px; cursor: pointer;
+  font-family: var(--font-archivo), "Archivo", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 26px 26px;
 }
 
-.list { display: flex; flex-direction: column; gap: 8px; }
-.empty { color: var(--muted); font-size: 12px; }
-.job {
-  display: flex; align-items: center; gap: 12px;
-  background: var(--panel); border: 1px solid var(--line); padding: 10px 12px;
-}
-.badge {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
-  border: 1px solid; padding: 1px 6px; min-width: 64px; text-align: center;
-}
-.title { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.time { font-size: 11px; color: var(--muted); }
+::selection { background: var(--ink); color: var(--concrete); }
 
-.projbar { display: flex; gap: 8px; margin-top: 16px; }
-.projbar select { flex: 1; background: var(--panel); border: 2px solid var(--line); color: var(--ink); padding: 8px 10px; font: inherit; font-size: 12px; }
-.projbar button, .addproj button { background: var(--panel); border: 2px solid var(--line); color: var(--ink); padding: 0 12px; font: inherit; font-size: 12px; cursor: pointer; }
-.addproj { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-.addproj input { flex: 1; min-width: 120px; background: var(--panel); border: 2px solid var(--line); color: var(--ink); padding: 8px 10px; font: inherit; font-size: 12px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--concrete); }
+::-webkit-scrollbar-thumb:hover { background: #000; }
 
-.cols { display: flex; gap: 12px; margin-top: 8px; align-items: flex-start; }
-.cols .list { flex: 1; min-width: 0; }
-.job { cursor: pointer; }
-.job.sel { border-color: var(--ink); }
-.detail { flex: 1; min-width: 0; position: sticky; top: 12px; }
-.term {
-  background: #0c0e12; border: 1px solid var(--line); padding: 10px;
-  max-height: 60vh; overflow-y: auto; font-size: 11px; line-height: 1.5;
-  color: #cfe8cf; white-space: pre-wrap; word-break: break-word; margin: 0;
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ───────── Brutalist helpers ───────── */
+.font-display { font-family: var(--font-archivo-black); }
+.font-data { font-family: var(--font-space-mono); }
+.font-mono { font-family: var(--font-jetbrains); }
+
+.grid-bg {
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 26px 26px;
 }
 
-.gh { margin-left: auto; font-size: 11px; color: var(--muted); }
-.gh + .live { margin-left: 12px; }
-.ghbtn { margin-left: auto; background: var(--panel); border: 2px solid var(--line); color: var(--ink); font: inherit; font-size: 11px; padding: 4px 10px; cursor: pointer; }
-.ghbtn:hover { border-color: var(--ink); }
-.addwrap { margin-top: 8px; border: 1px solid var(--line); }
-.repos { max-height: 240px; overflow-y: auto; }
-.repos-head { font-size: 10px; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
-.repo { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
-.repo:hover { background: var(--panel); }
-.repo .add { color: var(--muted); font-size: 11px; }
-.pr { color: #6ea8fe; font-size: 11px; text-decoration: none; border: 1px solid #6ea8fe; padding: 0 5px; }
-.prlink { display: inline-block; color: #6ea8fe; font-size: 12px; margin-bottom: 8px; }
+.brutal-shadow { box-shadow: 9px 9px 0 var(--ink); }
+.brutal-shadow-sm { box-shadow: 5px 5px 0 var(--ink); }
+.brutal-shadow-muted { box-shadow: 9px 9px 0 var(--muted); }
+
+.brutal-press { transition: transform .1s ease, box-shadow .1s ease; }
+.brutal-press:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--muted); }
+.brutal-press:active { transform: translate(2px, 2px); box-shadow: none; }

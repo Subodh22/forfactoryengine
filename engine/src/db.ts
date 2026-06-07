@@ -123,11 +123,8 @@ export async function initSchema(): Promise<void> {
       created_at     INTEGER NOT NULL
     )
   `);
-  await db.execute(`CREATE INDEX IF NOT EXISTS jobs_by_created ON jobs (created_at DESC)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS jobs_by_status ON jobs (status)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS jobs_by_parent ON jobs (parent_job_id)`);
-
   // Upgrade older DBs: add any columns that predate this version (ignored if present).
+  // Must run BEFORE the indexes below, which reference new columns.
   const projectCols: [string, string][] = [
     ["color", "TEXT NOT NULL DEFAULT ''"],
     ["session_prefix", "TEXT NOT NULL DEFAULT ''"],
@@ -160,6 +157,11 @@ export async function initSchema(): Promise<void> {
   }
   // Migrate legacy "done" status from the pre-rewrite schema to "completed".
   try { await db.execute("UPDATE jobs SET status = 'completed' WHERE status = 'done'"); } catch { /* ignore */ }
+
+  // Indexes last — after migrations have ensured the referenced columns exist.
+  await db.execute(`CREATE INDEX IF NOT EXISTS jobs_by_created ON jobs (created_at DESC)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS jobs_by_status ON jobs (status)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS jobs_by_parent ON jobs (parent_job_id)`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS settings (
