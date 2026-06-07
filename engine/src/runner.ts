@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getJob, getProject, getSetting, patchJob, type Job } from "./db";
+import { getJob, getProject, getSetting, patchJob, listJobsByStatus, type Job } from "./db";
 import { broadcast } from "./events";
 import { createClaudeSession } from "./agent/claude-runner";
 import { createWorktree, removeWorktree, getChangedFiles, commitOnly, pushBranch, ensureRepoCloned } from "./agent/worktree";
@@ -12,10 +12,25 @@ import { createPR } from "./agent/github";
 const MAX_CONCURRENT = 3;
 const queue: string[] = [];
 const active = new Set<string>();
+// Every job id we've ever taken responsibility for — prevents the cloud-pickup
+// sweep from enqueuing a job twice (or re-running one already in flight).
+const seen = new Set<string>();
 
 export function enqueue(jobId: string): void {
+  if (seen.has(jobId)) return;
+  seen.add(jobId);
   queue.push(jobId);
   pump();
+}
+
+/**
+ * Enqueue any "pending" jobs we haven't picked up yet. These are jobs created
+ * remotely (e.g. from the Vercel control app, written to Turso and synced down)
+ * — or our own jobs left pending after a restart. Called on the sync loop.
+ */
+export async function pickupPending(): Promise<void> {
+  const pending = await listJobsByStatus("pending");
+  for (const job of pending) enqueue(job.id);
 }
 
 function pump(): void {

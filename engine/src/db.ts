@@ -27,14 +27,6 @@ export async function syncNow(): Promise<void> {
   try { await db.sync(); } catch (err) { console.error("[sync]", String(err)); }
 }
 
-/** Sync on an interval so the phone copy stays fresh (and inbound phone writes
- *  land locally). Returns a stop function. */
-export function startSync(intervalMs = 4000): () => void {
-  if (!syncUrl) return () => {};
-  const t = setInterval(() => void syncNow(), intervalMs);
-  return () => clearInterval(t);
-}
-
 export interface Project {
   id: string;
   name: string;
@@ -173,6 +165,11 @@ function rowToJob(r: Row): Job {
 
 export async function listJobs(limit = 200): Promise<Job[]> {
   const res = await db.execute({ sql: "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", args: [limit] });
+  return res.rows.map(rowToJob);
+}
+
+export async function listJobsByStatus(status: Job["status"]): Promise<Job[]> {
+  const res = await db.execute({ sql: "SELECT * FROM jobs WHERE status = ? ORDER BY created_at ASC", args: [status] });
   return res.rows.map(rowToJob);
 }
 
