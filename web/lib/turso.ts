@@ -20,6 +20,21 @@ async function ensure(db: Client): Promise<void> {
     prompt TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
     branch TEXT NOT NULL DEFAULT '', pr_url TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)`);
+  await db.execute(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')`);
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const db = turso(); await ensure(db);
+  const r = await db.execute({ sql: "SELECT value FROM settings WHERE key = ?", args: [key] });
+  return r.rows[0] ? String(r.rows[0].value) : null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const db = turso(); await ensure(db);
+  await db.execute({
+    sql: "INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    args: [key, value],
+  });
 }
 
 export interface Project { id: string; name: string; repo: string; defaultBranch: string; }

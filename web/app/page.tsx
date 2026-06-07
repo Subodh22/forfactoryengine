@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 interface Project { id: string; name: string; repo: string; defaultBranch: string; }
 interface Job { id: string; projectId: string; title: string; status: string; prUrl: string; createdAt: number; }
+interface Repo { fullName: string; defaultBranch: string; private: boolean; }
 
 const COLOR: Record<string, string> = {
   pending: "#888", running: "#e0a32e", done: "#3bd16f", failed: "#d6210f", cancelled: "#888",
@@ -20,22 +21,28 @@ export default function Page() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [projectId, setProjectId] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
+  const [ghLogin, setGhLogin] = useState("");
+  const [ghOAuth, setGhOAuth] = useState(false);
+  const [repos, setRepos] = useState<Repo[]>([]);
+  const [showRepos, setShowRepos] = useState(false);
 
   useEffect(() => {
     jget<Project[]>("/api/projects").then((p) => { setProjects(p); if (p[0]) setProjectId(p[0].id); }).catch(() => {});
+    jget<{ login: string; oauthConfigured: boolean }>("/api/github/status").then((s) => { setGhLogin(s.login); setGhOAuth(s.oauthConfigured); }).catch(() => {});
     const load = () => jget<Job[]>("/api/jobs").then(setJobs).catch(() => {});
     load();
-    const t = setInterval(load, 3000); // the engine updates status in Turso; we poll it
+    const t = setInterval(load, 3000);
     return () => clearInterval(t);
   }, []);
 
-  async function addProject(e: React.FormEvent) {
-    e.preventDefault();
-    const f = new FormData(e.target as HTMLFormElement);
+  async function openRepos() {
+    setShowRepos((v) => !v);
+    if (repos.length === 0) { try { setRepos(await jget<Repo[]>("/api/github/repos")); } catch { /* ignore */ } }
+  }
+  async function addRepo(r: Repo) {
     try {
-      const p = await jpost("/api/projects", { name: f.get("name"), repo: f.get("repo"), defaultBranch: f.get("branch") || "main" }) as Project;
-      setProjects((xs) => [p, ...xs]); setProjectId(p.id); setShowAdd(false);
+      const p = await jpost("/api/projects", { name: r.fullName.split("/")[1], repo: r.fullName, defaultBranch: r.defaultBranch }) as Project;
+      setProjects((xs) => [p, ...xs]); setProjectId(p.id); setShowRepos(false);
     } catch (err) { alert(String(err)); }
   }
   async function run(e: React.FormEvent) {
@@ -52,6 +59,11 @@ export default function Page() {
       <header>
         <span className="logo" /><b>FACTORY</b>
         <span className="tag">control · runs on your machine</span>
+        {ghLogin
+          ? <span className="gh">@{ghLogin}</span>
+          : ghOAuth
+            ? <a className="ghbtn" href="/api/github/login">Login with GitHub</a>
+            : <span className="gh">set GitHub OAuth in env</span>}
       </header>
 
       <div className="row">
@@ -59,22 +71,25 @@ export default function Page() {
           {projects.length === 0 && <option value="">— no projects —</option>}
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name} ⎇ {p.repo}</option>)}
         </select>
-        <button className="ghost" onClick={() => setShowAdd((v) => !v)}>{showAdd ? "×" : "+ repo"}</button>
+        {ghLogin && <button className="ghost" onClick={openRepos}>{showRepos ? "×" : "+ repo"}</button>}
       </div>
 
-      {showAdd && (
-        <form onSubmit={addProject} className="add">
-          <input name="name" placeholder="name" required />
-          <input name="repo" placeholder="owner/repo" required />
-          <button type="submit">Add</button>
-        </form>
+      {showRepos && (
+        <div className="repos">
+          {repos.length === 0 && <p className="muted" style={{ padding: 10 }}>Loading your repos…</p>}
+          {repos.map((r) => (
+            <div key={r.fullName} className="repo" onClick={() => addRepo(r)}>
+              <span>{r.fullName}{r.private ? " 🔒" : ""}</span><span className="muted">add →</span>
+            </div>
+          ))}
+        </div>
       )}
 
       <form onSubmit={run} className="row">
         <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Describe a job…" disabled={!projectId} />
         <button type="submit" disabled={!projectId}>Queue</button>
       </form>
-      <p className="muted section">Jobs queue here and run on your Mac when its engine is online.</p>
+      <p className="muted section">Jobs run on your Mac when its engine is online, then open a PR.</p>
 
       <div className="section">
         {jobs.length === 0 && <p className="muted">No jobs yet.</p>}
