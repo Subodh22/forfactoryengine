@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from "react";
 import { Paperclip, Play, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
-import { useProject } from "@/lib/data";
+import { useFactory, useProject } from "@/lib/data";
 import { createJob } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
@@ -22,6 +22,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   const [loading, setLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  const { addJob } = useFactory();
   const project = useProject(projectId);
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
@@ -72,6 +73,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
         effort: effort || undefined,
         autoRun: autoRun || delegate,
       });
+      addJob(job);
       toast.success(delegate ? "Epic queued — the engine will plan it" : autoRun ? "Queued — the engine will run it" : "Job created");
       onJobCreated?.(job.id);
       setPrompt("");
