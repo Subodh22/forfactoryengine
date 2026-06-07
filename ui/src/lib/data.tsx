@@ -1,5 +1,5 @@
 import {
-  createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from "react";
 import { api, wsUrl, getToken } from "./api";
 import type { Job, Project, ChatMsg } from "./types";
@@ -26,6 +26,7 @@ interface FactoryCtx {
   ghLogin: string;
   ghOAuth: boolean;
   setGhLogin: (s: string) => void;
+  addJob: (job: Job) => void;
   onOutput: (jobId: string, cb: (chunk: string) => void) => () => void;
   onChat: (jobId: string, cb: (msg: ChatMsg) => void) => () => void;
   onTerm: (sessionId: string, cb: (text: string) => void) => () => void;
@@ -104,12 +105,16 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
     return () => ws.close();
   }, [ready]);
 
+  const addJob = useCallback((job: Job) => {
+    setJobs((j) => (j.some((x) => x.id === job.id) ? j : [job, ...j]));
+  }, []);
+
   const value = useMemo<FactoryCtx>(() => ({
-    ready, needToken, live, projects, jobs, ghLogin, ghOAuth, setGhLogin,
+    ready, needToken, live, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob,
     onOutput: (jobId, cb) => addListener(outputListeners.current, jobId, cb),
     onChat: (jobId, cb) => addListener(chatListeners.current, jobId, cb),
     onTerm: (sessionId, cb) => addListener(termListeners.current, sessionId, cb),
-  }), [ready, needToken, live, projects, jobs, ghLogin, ghOAuth]);
+  }), [ready, needToken, live, projects, jobs, ghLogin, ghOAuth, addJob]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
