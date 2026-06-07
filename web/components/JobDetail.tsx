@@ -121,6 +121,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [output, messages]);
 
   const canChat = !!job && !isPending;
+  const canChat = !!job && !isEpic;
 
   async function handleRedo(e: React.FormEvent) {
     e.preventDefault();
@@ -144,11 +145,16 @@ export function JobDetail({ jobId, onRedo }: Props) {
     setSending(true);
     const text = reply.trim();
     const images = attachedFiles;
-    addMessage({ id: `${Date.now()}-u`, role: "user", text, images: images.length ? images : undefined });
     setReply("");
     setAttachedFiles([]);
     try {
-      await sendReply(jobId, text, images);
+      if (isPending) {
+        await appendPrompt(jobId, text, images.length ? images : undefined);
+        toast.success("Added to prompt");
+      } else {
+        addMessage({ id: `${Date.now()}-u`, role: "user", text, images: images.length ? images : undefined });
+        await sendReply(jobId, text, images);
+      }
     } catch (err) {
       toast.error(String(err instanceof Error ? err.message : err) || "Could not reach the engine");
     } finally {
@@ -297,24 +303,9 @@ export function JobDetail({ jobId, onRedo }: Props) {
         </div>
       )}
 
-      {isPending && (
-        <div className="border-t-4 border-ink bg-concrete p-3 flex-shrink-0" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-          <p className="font-data text-[10px] uppercase text-muted mb-2">Add instructions or images before this job runs</p>
-          {attachedFiles.length > 0 && (
-            <div className="flex gap-2 mb-2 flex-wrap">{attachedFiles.map((src, i) => <AttachmentPreview key={i} src={src} size={56} onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))} />)}</div>
-          )}
-          <form onSubmit={handleAddPrompt} className="flex gap-2">
-            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
-            <input value={promptDraft} onChange={(e) => setPromptDraft(e.target.value)} placeholder="Add to prompt… (paste screenshots here)" onPaste={onPaste} className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow" />
-            <button type="submit" disabled={(!promptDraft.trim() && !attachedFiles.length) || addingPrompt} className="px-3 py-2 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><Plus className="w-3 h-3" />{addingPrompt ? "..." : "Add"}</button>
-          </form>
-        </div>
-      )}
-
       {canChat && (
         <div className={`border-t-4 p-3 flex-shrink-0 ${isWaiting ? "border-ink bg-[#b8860b]/15" : "border-ink bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+          {isPending && <p className="font-data text-[10px] uppercase text-muted mb-2">Add instructions or images before this job runs</p>}
           {isWaiting && <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">Claude has a question — reply to continue</p>}
           {isDelegating && <p className="font-data text-[10px] uppercase text-muted mb-2">Talk to Claude about this epic — opens a session in the integration branch</p>}
           {isRunning && <p className="font-data text-[10px] uppercase text-muted mb-2">Message will be delivered when Claude finishes this turn</p>}
@@ -326,7 +317,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
-            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={isWaiting ? "Reply to Claude… (paste screenshots)" : isRunning ? "Queue a message… (paste screenshots)" : "Message Claude… (paste screenshots)"} onPaste={onPaste} className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow" autoFocus={isWaiting} />
+            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={isPending ? "Add to prompt… (paste screenshots)" : isWaiting ? "Reply to Claude… (paste screenshots)" : isRunning ? "Queue a message… (paste screenshots)" : "Message Claude… (paste screenshots)"} onPaste={onPaste} className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow" autoFocus={isWaiting} />
             <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-3 py-2 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><Send className="w-3 h-3" />{sending ? "…" : "Send"}</button>
           </form>
         </div>

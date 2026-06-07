@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.db
 *.db-*
+logs/
 .env
 .env.local
 .DS_Store

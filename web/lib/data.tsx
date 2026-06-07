@@ -1,6 +1,6 @@
 "use client";
 import {
-  createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from "react";
 import { api, wsUrl, getToken } from "./api";
 import type { Job, Project, ChatMsg } from "./types";
@@ -27,6 +27,7 @@ interface FactoryCtx {
   ghLogin: string;
   ghOAuth: boolean;
   setGhLogin: (s: string) => void;
+  addJob: (job: Job) => void;
   onOutput: (jobId: string, cb: (chunk: string) => void) => () => void;
   onChat: (jobId: string, cb: (msg: ChatMsg) => void) => () => void;
   onTerm: (sessionId: string, cb: (text: string) => void) => () => void;
@@ -105,12 +106,16 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
     return () => ws.close();
   }, [ready]);
 
+  const addJob = useCallback((job: Job) => {
+    setJobs((j) => (j.some((x) => x.id === job.id) ? j : [job, ...j]));
+  }, []);
+
   const value = useMemo<FactoryCtx>(() => ({
-    ready, needToken, live, projects, jobs, ghLogin, ghOAuth, setGhLogin,
+    ready, needToken, live, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob,
     onOutput: (jobId, cb) => addListener(outputListeners.current, jobId, cb),
     onChat: (jobId, cb) => addListener(chatListeners.current, jobId, cb),
     onTerm: (sessionId, cb) => addListener(termListeners.current, sessionId, cb),
-  }), [ready, needToken, live, projects, jobs, ghLogin, ghOAuth]);
+  }), [ready, needToken, live, projects, jobs, ghLogin, ghOAuth, addJob]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -144,16 +149,23 @@ export function useChildren(epicId: string): Job[] {
   );
 }
 
-/** Accumulate a job's live terminal output while `active`. Output is never
- *  persisted, so a finished job shows nothing — matching the reference. */
-export function useJobOutput(jobId: string, active: boolean): string {
+/** A job's terminal output. The persisted log is fetched on open (so finished
+ *  jobs and reloads replay full history), then live chunks are tailed while the
+ *  job is running (`live`). Subscribing only after the backfill resolves avoids
+ *  duplicating chunks that are already in the persisted log. */
+export function useJobOutput(jobId: string, live: boolean): string {
   const { onOutput } = useFactory();
   const [output, setOutput] = useState("");
   useEffect(() => {
+    let cancelled = false;
+    let off: (() => void) | undefined;
+    const tail = () => { off = onOutput(jobId, (chunk) => setOutput((o) => o + chunk)); };
     setOutput("");
-    if (!active) return;
-    return onOutput(jobId, (chunk) => setOutput((o) => o + chunk));
-  }, [jobId, active, onOutput]);
+    api<{ output: string }>(`/api/jobs/${jobId}/output`)
+      .then((r) => { if (cancelled) return; setOutput(r.output); if (live) tail(); })
+      .catch(() => { if (!cancelled && live) tail(); });
+    return () => { cancelled = true; off?.(); };
+  }, [jobId, live, onOutput]);
   return output;
 }
 

@@ -12,6 +12,7 @@ import {
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
+import { readOutput, clearOutput } from "./output-log";
 import { scheduleDelegationCheck } from "./delegator-scheduler";
 import { runTerminalCommand, killTerminal } from "./terminal";
 import { getClaudeUsage } from "./usage";
@@ -308,8 +309,14 @@ export function startServer(port: number): http.Server {
         if (method === "GET" && action === "children") {
           return sendJson(res, 200, await childrenOf(id));
         }
+        if (method === "GET" && action === "output") {
+          // Persisted agent log — fetched on open so finished jobs and reloads
+          // show full history; the live tail continues over the WebSocket.
+          return sendJson(res, 200, { output: readOutput(id) });
+        }
         if (method === "DELETE" && !action) {
           await removeJob(id);
+          clearOutput(id);
           broadcast({ type: "job.removed", id });
           return sendJson(res, 200, { ok: true });
         }
