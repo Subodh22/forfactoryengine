@@ -11,3 +11,9 @@ logs/
 next-env.d.ts
 
 *.tsbuildinfo
+
+# packaging build artifacts
+desktop/out/
+desktop/resources/
+cli/engine/
+cli/ui/

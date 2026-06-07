@@ -39,12 +39,26 @@ ENGINE (one process on your machine)
 - **Plane 3:** Turso embedded-replica sync → a hosted phone UI reads the cloud copy.
 - **Plane 4:** package as a single binary (Bun `--compile`) + license/auth.
 
-## Run it
+## Install (for users)
+
+Factory is free and self-hosted, and uses your own Claude login. Three ways to
+run it — see **[INSTALL.md](INSTALL.md)** for details:
+
+- **Desktop app** — download the `.dmg` / `.exe` / `.AppImage` from Releases.
+- **CLI** — `npx @factory/cli up` (or `npm i -g @factory/cli`), then `factory up`.
+- **Docker** — for a shared team/server instance (see INSTALL.md + SECURITY.md).
+
+`factory doctor` checks the prerequisites (Node, git, Claude login).
+
+## Run it (from source)
 
 ```bash
-npm run setup     # install root + engine + ui deps
+npm run setup     # install root + engine + ui + web deps
 npm run dev       # engine on :8787, UI on :5173 (Vite proxies /api + /ws to the engine)
 # open http://localhost:5173 — create a job, watch it go live across tabs
+
+# or run the packaged way:
+npm run build && npm run factory   # build UI + engine, then launch via the CLI
 ```
 
 The DB is a local file `engine/factory.db` (gitignored). Delete it to reset.

@@ -1,5 +1,6 @@
-# Factory engine — runs online (Fly.io / any container host).
-# Bundles git + the Claude Code CLI; builds the UI so the engine serves it.
+# Factory engine — self-host on any container host (Fly.io, a VPS, on-prem).
+# Bundles git + the Claude Code CLI; builds the UI + compiles the engine so the
+# image runs plain Node (no tsx at runtime).
 FROM node:22-slim
 
 RUN apt-get update \
@@ -15,12 +16,14 @@ RUN npm --prefix engine install
 COPY ui/package*.json ui/
 RUN npm --prefix ui install
 
-# Build the UI (the engine serves ui/dist) and copy the rest
+# Build the UI (engine serves ui/dist) and compile the engine to dist/factory.mjs
 COPY . .
-RUN npm --prefix ui run build
+RUN npm --prefix ui run build && npm --prefix engine run build
 
-# Hosted defaults. Secrets (ANTHROPIC_API_KEY, FACTORY_AUTH_TOKEN, TURSO_*) are
-# injected at runtime via `fly secrets set`, never baked into the image.
+# Self-host defaults. Secrets (FACTORY_AUTH_TOKEN, TURSO_*) are injected at
+# runtime, never baked in. FACTORY_AUTH_TOKEN is REQUIRED here: the engine binds
+# to 0.0.0.0 and runs coding agents + a shell endpoint, so it refuses to start on
+# a public interface without a token.
 ENV PORT=8787 \
     FACTORY_HOST=0.0.0.0 \
     FACTORY_DATA_DIR=/data \
@@ -28,4 +31,8 @@ ENV PORT=8787 \
 
 EXPOSE 8787
 VOLUME ["/data"]
-CMD ["npm", "--prefix", "engine", "run", "start"]
+
+# Claude auth: the container needs a signed-in Claude CLI. Mount your local
+# credentials read-only, e.g.:
+#   docker run -e FACTORY_AUTH_TOKEN=... -v ~/.claude:/root/.claude:ro -v factory:/data -p 8787:8787 factory
+CMD ["node", "engine/dist/factory.mjs"]

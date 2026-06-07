@@ -1,0 +1,20 @@
+Factory — End User License Agreement (Free Use)
+
+Copyright (c) 2026 Factory. All rights reserved.
+
+This software ("Factory") is made available free of charge under the terms of the
+EULA in EULA.md. In summary (the EULA controls in case of any conflict):
+
+- You MAY install and use Factory, at no cost, for your own and your
+  organization's internal software development.
+- You MAY NOT resell, sublicense, rehost as a paid service, or redistribute
+  Factory or modified versions of it without prior written permission.
+- Factory is provided "AS IS", without warranty of any kind. Factory runs
+  autonomous coding agents with shell access on your systems; you are responsible
+  for how you deploy and use it. See SECURITY.md.
+
+Factory orchestrates third-party tools (Anthropic's Claude, GitHub). Your use of
+those services is governed by their own terms; Factory does not grant any rights
+to them and does not resell access to them.
+
+See EULA.md for the full terms.

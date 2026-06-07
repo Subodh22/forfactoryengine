@@ -1,0 +1,31 @@
+{
+  "name": "factory-desktop",
+  "version": "0.0.1",
+  "description": "Factory — local AI software factory, desktop app",
+  "author": "Factory",
+  "main": "main.js",
+  "scripts": {
+    "assemble": "node assemble.mjs",
+    "start": "npm run assemble && electron .",
+    "dist": "npm run assemble && electron-builder",
+    "dist:dir": "npm run assemble && electron-builder --dir"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.14.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.factory.app",
+    "productName": "Factory",
+    "files": ["main.js", "resources/**/*", "node_modules/**/*"],
+    "asarUnpack": ["**/*.node"],
+    "npmRebuild": true,
+    "directories": { "output": "out" },
+    "mac": { "category": "public.app-category.developer-tools", "target": ["dmg", "zip"] },
+    "win": { "target": ["nsis"] },
+    "linux": { "target": ["AppImage"], "category": "Development" }
+  }
+}
