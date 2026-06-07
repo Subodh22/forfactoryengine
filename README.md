@@ -4,6 +4,16 @@ Local-first AI coding automation, rebuilt the right way. The **engine** runs on 
 machine: it owns an embedded **libSQL** database, runs the agents, and pushes live
 updates over **WebSocket** — no metered cloud database, no Convex.
 
+The full **Factory** experience (the "Grid-Cast" concrete-brutalist UI from
+[Factory8090](https://github.com/Subodh22/Factory8090)) runs on top of this engine:
+a 7-column Kanban board, a live Agents grid of streaming mini-terminals, a Master
+feed, per-job detail with a live terminal + chat replies, model/effort selection,
+epic **delegation** (a planner splits a task into a parallel subtask DAG merged into
+one PR), an in-app **.env editor** and **web terminal**, and real Claude usage
+meters. The same UI ships twice — `ui/` (Vite, served by the engine, same-origin)
+and `web/` (Next.js for Vercel, pointed at the engine over the network) — both
+fully live because both speak the engine's WebSocket.
+
 ## Architecture (the one principle)
 
 > The local node is the source of truth and the live wire. The cloud is a thin,
