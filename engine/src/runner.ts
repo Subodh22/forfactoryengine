@@ -492,27 +492,40 @@ async function drainReplies(jobId: string): Promise<void> {
   }
 }
 
-/** Resume a finished job by its saved session id so the user can keep chatting. */
+/** Resume a finished job by its saved session id so the user can keep chatting.
+ *  Also supports epic jobs (which may not have a session id) by starting fresh. */
 async function continueJob(jobId: string, text: string, images: string[]): Promise<boolean> {
   if (activeSessions.has(jobId)) return false;
 
   const job = await getJob(jobId).catch(() => null);
-  if (!job || !job.sessionId) return false;
-  if (job.parentJobId) return false; // child tasks aren't chat-resumable
+  if (!job) return false;
   const project = await getProject(job.projectId).catch(() => null);
   if (!project) return false;
 
   let worktreePath: string;
   let branch: string;
+  let childCtx: ChildContext | undefined;
   try {
-    if (job.worktreePath && fs.existsSync(job.worktreePath)) {
+    if (job.kind === "epic") {
+      // Epic: use the integration worktree so the user chats in the merged context.
+      const epic = ensureEpicWorktree(project.localPath, jobId, project.defaultBranch);
+      worktreePath = epic.worktreePath;
+      branch = epic.branch;
+    } else if (job.worktreePath && fs.existsSync(job.worktreePath)) {
       worktreePath = job.worktreePath;
       branch = job.branch || `job/${jobId}`;
     } else {
-      const wt = createWorktree(project.localPath, jobId, project.defaultBranch);
+      const baseBranch = job.parentJobId
+        ? ((await getJob(job.parentJobId).catch(() => null))?.branch || project.defaultBranch)
+        : project.defaultBranch;
+      const wt = createWorktree(project.localPath, jobId, baseBranch);
       worktreePath = wt.worktreePath;
       branch = wt.branch;
       copyEnvToWorktree(project.localPath, worktreePath);
+    }
+    if (job.parentJobId) {
+      const epic = ensureEpicWorktree(project.localPath, job.parentJobId, project.defaultBranch);
+      childCtx = { parentJobId: job.parentJobId, epicBranch: epic.branch, epicWorktreePath: epic.worktreePath };
     }
   } catch (err) {
     log(jobId, `Could not reopen worktree to continue: ${String(err)}`);
@@ -520,16 +533,19 @@ async function continueJob(jobId: string, text: string, images: string[]): Promi
   }
 
   await updateStatus(jobId, "running", { worktreePath, branch }).catch(() => {});
-  log(jobId, `Resuming session ${job.sessionId.slice(0, 8)}… to continue the conversation.`);
 
-  const session = createClaudeSession(worktreePath, job.sessionId, sessionOptsFor(job));
+  const resumeId = job.sessionId || undefined;
+  if (resumeId) log(jobId, `Resuming session ${resumeId.slice(0, 8)}… to continue the conversation.`);
+  else log(jobId, "Starting a new conversation…");
+
+  const session = createClaudeSession(worktreePath, resumeId, sessionOptsFor(job));
   activeSessions.set(jobId, session);
   session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
   session.onChunk((t) => emitOutput(jobId, t));
 
   liveContext.set(jobId, {
     worktreePath, branch, projectId: job.projectId, project, title: job.title,
-    busy: false, queue: [{ text, images }],
+    busy: false, queue: [{ text, images }], child: childCtx,
   });
   void drainReplies(jobId);
   return true;

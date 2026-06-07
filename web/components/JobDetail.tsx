@@ -120,7 +120,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [output, messages]);
 
-  const canChat = !!job && !isPending && !isEpic;
+  const canChat = !!job && !isPending;
 
   async function handleRedo(e: React.FormEvent) {
     e.preventDefault();
@@ -316,6 +316,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
       {canChat && (
         <div className={`border-t-4 p-3 flex-shrink-0 ${isWaiting ? "border-ink bg-[#b8860b]/15" : "border-ink bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
           {isWaiting && <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">Claude has a question — reply to continue</p>}
+          {isDelegating && <p className="font-data text-[10px] uppercase text-muted mb-2">Talk to Claude about this epic — opens a session in the integration branch</p>}
           {isRunning && <p className="font-data text-[10px] uppercase text-muted mb-2">Message will be delivered when Claude finishes this turn</p>}
           {isFinished && <p className="font-data text-[10px] uppercase text-muted mb-2">Continue the conversation — resumes this job&apos;s session</p>}
           {attachedFiles.length > 0 && (
