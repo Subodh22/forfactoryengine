@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "node:http";
 import type { Job, Project } from "./db";
 import { checkAuth } from "./auth";
+import { appendOutput } from "./output-log";
 
 // The live wire. The engine owns every write, so it broadcasts each change to all
 // connected clients over WebSocket — this replaces Convex's reactive queries AND
@@ -46,6 +47,7 @@ export function broadcast(event: ServerEvent): void {
 // Convenience helpers mirroring the reference's sse-server API so the runner /
 // delegator / terminal read naturally.
 export function emitOutput(jobId: string, chunk: string): void {
+  appendOutput(jobId, chunk); // durable log, before broadcasting the live chunk
   broadcast({ type: "job.output", jobId, chunk });
 }
 export function emitChat(jobId: string, role: "assistant" | "user", text: string, images?: string[]): void {

@@ -5,7 +5,14 @@ import { pickupQueued, recoverOrphans } from "./runner";
 import { authEnabled } from "./auth";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const POLL_MS = 4000;
+// New jobs are enqueued in-process the instant they're created via the API
+// (server.ts) or promoted by the delegator, so the engine no longer needs a fast
+// poll to discover work. This periodic sweep is now only a safety net — it picks
+// up jobs left "queued" by a restart or an out-of-band Turso writer — so it can
+// run slowly. Raising it from 4s → 30s cuts idle Turso reads ~87% with no effect
+// on job-start latency. Override (e.g. lower it if a second engine shares the DB)
+// with FACTORY_POLL_MS.
+const POLL_MS = Number(process.env.FACTORY_POLL_MS ?? 30_000);
 
 await initSchema();
 startServer(PORT);

@@ -149,16 +149,23 @@ export function useChildren(epicId: string): Job[] {
   );
 }
 
-/** Accumulate a job's live terminal output while `active`. Output is never
- *  persisted, so a finished job shows nothing — matching the reference. */
-export function useJobOutput(jobId: string, active: boolean): string {
+/** A job's terminal output. The persisted log is fetched on open (so finished
+ *  jobs and reloads replay full history), then live chunks are tailed while the
+ *  job is running (`live`). Subscribing only after the backfill resolves avoids
+ *  duplicating chunks that are already in the persisted log. */
+export function useJobOutput(jobId: string, live: boolean): string {
   const { onOutput } = useFactory();
   const [output, setOutput] = useState("");
   useEffect(() => {
+    let cancelled = false;
+    let off: (() => void) | undefined;
+    const tail = () => { off = onOutput(jobId, (chunk) => setOutput((o) => o + chunk)); };
     setOutput("");
-    if (!active) return;
-    return onOutput(jobId, (chunk) => setOutput((o) => o + chunk));
-  }, [jobId, active, onOutput]);
+    api<{ output: string }>(`/api/jobs/${jobId}/output`)
+      .then((r) => { if (cancelled) return; setOutput(r.output); if (live) tail(); })
+      .catch(() => { if (!cancelled && live) tail(); });
+    return () => { cancelled = true; off?.(); };
+  }, [jobId, live, onOutput]);
   return output;
 }
 
