@@ -49,6 +49,7 @@ export function App() {
   const [live, setLive] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [ghLogin, setGhLogin] = useState("");
+  const [ghOAuth, setGhOAuth] = useState(false);
   const [repos, setRepos] = useState<Repo[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +63,7 @@ export function App() {
     if (!ready) return;
     api("/api/projects").then((p: Project[]) => { setProjects(p); if (p[0]) setProjectId(p[0].id); }).catch(() => {});
     api("/api/jobs").then(setJobs).catch(() => {});
-    api("/api/github/status").then((s: { login: string }) => setGhLogin(s.login)).catch(() => {});
+    api("/api/github/status").then((s: { login: string; oauthConfigured: boolean }) => { setGhLogin(s.login); setGhOAuth(s.oauthConfigured); }).catch(() => {});
 
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const t = getToken();
@@ -136,7 +137,9 @@ export function App() {
         <span className="tag">ENGINE · libSQL + WS</span>
         {ghLogin
           ? <span className="gh">@{ghLogin}</span>
-          : <button className="ghbtn" onClick={connectGithub}>Connect GitHub</button>}
+          : ghOAuth
+            ? <a className="ghbtn" href="/api/github/login">Login with GitHub</a>
+            : <button className="ghbtn" onClick={connectGithub}>Connect GitHub</button>}
         <span className="live" style={{ opacity: live ? 1 : 0.3 }}>● {live ? "live" : "offline"}</span>
       </header>
 

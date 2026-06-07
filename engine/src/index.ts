@@ -1,3 +1,4 @@
+import "./env"; // load .env before anything reads process.env
 import { initSchema, startSync, cloudSyncEnabled } from "./db";
 import { startServer } from "./server";
 import { authEnabled } from "./auth";

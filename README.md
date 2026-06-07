@@ -38,3 +38,19 @@ npm run dev       # engine on :8787, UI on :5173 (Vite proxies /api + /ws to the
 ```
 
 The DB is a local file `engine/factory.db` (gitignored). Delete it to reset.
+
+## Connect GitHub
+
+Two ways to connect your repos:
+
+- **Login with GitHub (OAuth):** create a GitHub OAuth App (see `engine/.env.example`),
+  put the client id/secret in `engine/.env`, restart — the header shows a **Login with
+  GitHub** button. After login, your repos are listed under **+ project**.
+- **Token (no setup):** if OAuth isn't configured, the header shows **Connect GitHub** —
+  paste a Personal Access Token (scope `repo`).
+
+Either way: pick a repo to add it as a project, run jobs, and the engine commits the
+work and opens a **pull request** (a `PR ↗` link appears on the job).
+
+Claude auth: the engine spawns the `claude` CLI, so it uses **your Claude
+subscription** — just be signed in (`claude`). No API key needed locally.

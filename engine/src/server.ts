@@ -7,6 +7,13 @@ import { attachWebsocket, broadcast } from "./events";
 import { enqueue } from "./runner";
 import { checkAuth, authEnabled } from "./auth";
 import { getUser, fetchUserRepos } from "./agent/github";
+import { oauthConfigured, OAUTH_CALLBACK, APP_URL } from "./config";
+import { newState, consumeState, authorizeUrl, exchangeCode } from "./oauth";
+
+function redirect(res: http.ServerResponse, location: string): void {
+  res.writeHead(302, { Location: location });
+  res.end();
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIST = path.resolve(__dirname, "../../ui/dist");
@@ -59,6 +66,27 @@ export function startServer(port: number): http.Server {
       // Open: lets the UI know whether to prompt for a token before calling the API.
       if (req.method === "GET" && pathname === "/api/config") return sendJson(res, 200, { authEnabled });
 
+      // ── GitHub OAuth (open: these are browser navigations + the GitHub callback,
+      //    which can't carry the bearer token) ──
+      if (req.method === "GET" && pathname === "/api/github/login") {
+        if (!oauthConfigured) return sendJson(res, 400, { error: "OAuth not configured — set GITHUB_CLIENT_ID/SECRET in engine/.env" });
+        return redirect(res, authorizeUrl(OAUTH_CALLBACK, newState()));
+      }
+      if (req.method === "GET" && pathname === "/api/github/callback") {
+        const code = url.searchParams.get("code") ?? "";
+        const state = url.searchParams.get("state") ?? "";
+        if (!code || !consumeState(state)) return redirect(res, `${APP_URL}?gh=error`);
+        try {
+          const token = await exchangeCode(code, OAUTH_CALLBACK);
+          const { login } = await getUser(token);
+          await setSetting("githubToken", token);
+          await setSetting("githubLogin", login);
+          return redirect(res, `${APP_URL}?gh=ok`);
+        } catch {
+          return redirect(res, `${APP_URL}?gh=error`);
+        }
+      }
+
       // Gate the API (health stays open for deploy health checks). The static UI
       // is served unauthenticated so the login screen can load; it then sends the
       // token on every /api + WS call.
@@ -69,7 +97,7 @@ export function startServer(port: number): http.Server {
       // ── GitHub ──
       if (req.method === "GET" && pathname === "/api/github/status") {
         const login = await getSetting("githubLogin");
-        return sendJson(res, 200, { connected: Boolean(login), login: login ?? "" });
+        return sendJson(res, 200, { connected: Boolean(login), login: login ?? "", oauthConfigured });
       }
       if (req.method === "POST" && pathname === "/api/github/connect") {
         const token = String((await readBody(req)).token ?? "").trim();
