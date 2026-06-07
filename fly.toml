@@ -1,0 +1,26 @@
+# Fly.io deploy for the Factory engine. `fly launch --no-deploy` then `fly deploy`.
+app = "factory-engine"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  PORT = "8787"
+  FACTORY_HOST = "0.0.0.0"
+  FACTORY_DATA_DIR = "/data"
+  FACTORY_WORKSPACE = "/data/repos"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[mounts]]
+  source = "factory_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
