@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-interface Project { id: string; name: string; localPath: string; defaultBranch: string; }
+interface Project { id: string; name: string; localPath: string; repo: string; defaultBranch: string; }
 interface Job {
   id: string; projectId: string; title: string; prompt: string;
-  status: "pending" | "running" | "done" | "failed"; branch: string; error: string; createdAt: number;
+  status: "pending" | "running" | "done" | "failed"; branch: string; prUrl: string; error: string; createdAt: number;
 }
+interface Repo { fullName: string; defaultBranch: string; private: boolean; description: string | null; }
 type ServerEvent =
   | { type: "hello" }
   | { type: "project.created"; project: Project }
@@ -23,7 +24,6 @@ function clean(raw: string): string {
   return raw;
 }
 
-// ── auth: token lives in localStorage and rides every API + WS call ──
 const tokenKey = "factory-token";
 const getToken = () => localStorage.getItem(tokenKey) ?? "";
 function authHeaders(): Record<string, string> {
@@ -31,10 +31,7 @@ function authHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 async function api(path: string, opts: RequestInit = {}) {
-  const r = await fetch(path, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...authHeaders(), ...(opts.headers ?? {}) },
-  });
+  const r = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", ...authHeaders(), ...(opts.headers ?? {}) } });
   if (r.status === 401) { localStorage.removeItem(tokenKey); location.reload(); throw new Error("unauthorized"); }
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
   return r.json();
@@ -51,13 +48,13 @@ export function App() {
   const [prompt, setPrompt] = useState("");
   const [live, setLive] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [ghLogin, setGhLogin] = useState("");
+  const [repos, setRepos] = useState<Repo[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Decide whether a token is required before loading anything.
   useEffect(() => {
     fetch("/api/config").then((r) => r.json()).then((cfg: { authEnabled: boolean }) => {
-      if (cfg.authEnabled && !getToken()) setNeedToken(true);
-      else setReady(true);
+      if (cfg.authEnabled && !getToken()) setNeedToken(true); else setReady(true);
     }).catch(() => setReady(true));
   }, []);
 
@@ -65,6 +62,7 @@ export function App() {
     if (!ready) return;
     api("/api/projects").then((p: Project[]) => { setProjects(p); if (p[0]) setProjectId(p[0].id); }).catch(() => {});
     api("/api/jobs").then(setJobs).catch(() => {});
+    api("/api/github/status").then((s: { login: string }) => setGhLogin(s.login)).catch(() => {});
 
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const t = getToken();
@@ -87,10 +85,8 @@ export function App() {
     return (
       <div className="wrap">
         <header><span className="logo" /><b>FACTORY</b><span className="tag">sign in</span></header>
-        <form
-          className="composer" style={{ marginTop: 24 }}
-          onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.target as HTMLFormElement).get("t") as string).trim(); if (v) { localStorage.setItem(tokenKey, v); location.reload(); } }}
-        >
+        <form className="composer" style={{ marginTop: 24 }}
+          onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.target as HTMLFormElement).get("t") as string).trim(); if (v) { localStorage.setItem(tokenKey, v); location.reload(); } }}>
           <input name="t" type="password" placeholder="Access token" autoFocus />
           <button type="submit">Enter</button>
         </form>
@@ -99,7 +95,22 @@ export function App() {
   }
   if (!ready) return <div className="wrap"><p className="empty">Loading…</p></div>;
 
-  async function addProject(e: React.FormEvent) {
+  async function connectGithub() {
+    const token = window.prompt("Paste a GitHub Personal Access Token (scope: repo):");
+    if (!token?.trim()) return;
+    try { const r = await api("/api/github/connect", { method: "POST", body: JSON.stringify({ token: token.trim() }) }) as { login: string }; setGhLogin(r.login); loadRepos(); }
+    catch (err) { alert(String(err)); }
+  }
+  async function loadRepos() {
+    try { setRepos(await api("/api/github/repos")); } catch (err) { alert(String(err)); }
+  }
+  async function addRepoProject(repo: Repo) {
+    try {
+      const p = await api("/api/projects", { method: "POST", body: JSON.stringify({ name: repo.fullName.split("/")[1], repo: repo.fullName, defaultBranch: repo.defaultBranch }) }) as Project;
+      setProjectId(p.id); setShowAdd(false);
+    } catch (err) { alert(String(err)); }
+  }
+  async function addLocalProject(e: React.FormEvent) {
     e.preventDefault();
     const f = new FormData(e.target as HTMLFormElement);
     try {
@@ -116,29 +127,47 @@ export function App() {
     catch (err) { alert(String(err)); }
   }
 
+  const selJob = jobs.find((j) => j.id === selected);
+
   return (
     <div className="wrap">
       <header>
         <span className="logo" /><b>FACTORY</b>
         <span className="tag">ENGINE · libSQL + WS</span>
+        {ghLogin
+          ? <span className="gh">@{ghLogin}</span>
+          : <button className="ghbtn" onClick={connectGithub}>Connect GitHub</button>}
         <span className="live" style={{ opacity: live ? 1 : 0.3 }}>● {live ? "live" : "offline"}</span>
       </header>
 
       <div className="projbar">
         <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           {projects.length === 0 && <option value="">— no projects —</option>}
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.repo ? "  ⎇ " + p.repo : ""}</option>)}
         </select>
-        <button onClick={() => setShowAdd((v) => !v)}>{showAdd ? "×" : "+ project"}</button>
+        <button onClick={() => { setShowAdd((v) => !v); if (ghLogin && repos.length === 0) loadRepos(); }}>{showAdd ? "×" : "+ project"}</button>
       </div>
 
       {showAdd && (
-        <form onSubmit={addProject} className="addproj">
-          <input name="name" placeholder="Project name" required />
-          <input name="localPath" placeholder="/absolute/path/to/repo" required />
-          <input name="defaultBranch" placeholder="main" defaultValue="main" />
-          <button type="submit">Add</button>
-        </form>
+        <div className="addwrap">
+          {ghLogin && (
+            <div className="repos">
+              <div className="repos-head">Your GitHub repos {repos.length === 0 && "(loading…)"}</div>
+              {repos.map((r) => (
+                <div key={r.fullName} className="repo" onClick={() => addRepoProject(r)}>
+                  <span>{r.fullName}{r.private ? " 🔒" : ""}</span>
+                  <span className="add">add →</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <form onSubmit={addLocalProject} className="addproj">
+            <input name="name" placeholder="…or a local repo: name" required />
+            <input name="localPath" placeholder="/absolute/path/to/repo" required />
+            <input name="defaultBranch" placeholder="main" defaultValue="main" />
+            <button type="submit">Add local</button>
+          </form>
+        </div>
       )}
 
       <form onSubmit={run} className="composer">
@@ -153,12 +182,14 @@ export function App() {
             <div key={j.id} className={`job ${selected === j.id ? "sel" : ""}`} onClick={() => setSelected(j.id)}>
               <span className="badge" style={{ borderColor: STATUS_COLOR[j.status], color: STATUS_COLOR[j.status] }}>{j.status}</span>
               <span className="title">{j.title}</span>
+              {j.prUrl && <a className="pr" href={j.prUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>PR ↗</a>}
               <span className="time">{new Date(j.createdAt).toLocaleTimeString()}</span>
             </div>
           ))}
         </div>
         {selected && (
           <div className="detail">
+            {selJob?.prUrl && <a className="prlink" href={selJob.prUrl} target="_blank" rel="noreferrer">Open pull request ↗</a>}
             <pre className="term">
               {(output[selected] ?? "streaming…").split("\n").map((l, i) => <span key={i}>{clean(l)}{"\n"}</span>)}
               <div ref={bottomRef} />

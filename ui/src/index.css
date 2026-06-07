@@ -60,3 +60,16 @@ header b { font-size: 15px; letter-spacing: 1px; }
   max-height: 60vh; overflow-y: auto; font-size: 11px; line-height: 1.5;
   color: #cfe8cf; white-space: pre-wrap; word-break: break-word; margin: 0;
 }
+
+.gh { margin-left: auto; font-size: 11px; color: var(--muted); }
+.gh + .live { margin-left: 12px; }
+.ghbtn { margin-left: auto; background: var(--panel); border: 2px solid var(--line); color: var(--ink); font: inherit; font-size: 11px; padding: 4px 10px; cursor: pointer; }
+.ghbtn:hover { border-color: var(--ink); }
+.addwrap { margin-top: 8px; border: 1px solid var(--line); }
+.repos { max-height: 240px; overflow-y: auto; }
+.repos-head { font-size: 10px; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.repo { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
+.repo:hover { background: var(--panel); }
+.repo .add { color: var(--muted); font-size: 11px; }
+.pr { color: #6ea8fe; font-size: 11px; text-decoration: none; border: 1px solid #6ea8fe; padding: 0 5px; }
+.prlink { display: inline-block; color: #6ea8fe; font-size: 12px; margin-bottom: 8px; }

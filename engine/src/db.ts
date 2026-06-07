@@ -53,6 +53,7 @@ export interface Job {
   prompt: string;
   status: "pending" | "running" | "done" | "failed";
   branch: string;
+  prUrl: string;
   error: string;
   createdAt: number;
 }
@@ -78,11 +79,34 @@ export async function initSchema(): Promise<void> {
       prompt     TEXT NOT NULL DEFAULT '',
       status     TEXT NOT NULL DEFAULT 'pending',
       branch     TEXT NOT NULL DEFAULT '',
+      pr_url     TEXT NOT NULL DEFAULT '',
       error      TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL
     )
   `);
   await db.execute(`CREATE INDEX IF NOT EXISTS jobs_by_created ON jobs (created_at DESC)`);
+  // Upgrade older DBs that predate pr_url (ignore if the column already exists).
+  try { await db.execute("ALTER TABLE jobs ADD COLUMN pr_url TEXT NOT NULL DEFAULT ''"); } catch { /* exists */ }
+
+  // Simple key/value settings — e.g. the connected GitHub token + login.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    )
+  `);
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const res = await db.execute({ sql: "SELECT value FROM settings WHERE key = ?", args: [key] });
+  return res.rows[0] ? String(res.rows[0].value) : null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  await db.execute({
+    sql: "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    args: [key, value],
+  });
 }
 
 // ── projects ────────────────────────────────────────────────────────────────
@@ -141,6 +165,7 @@ function rowToJob(r: Row): Job {
     prompt: String(r.prompt),
     status: String(r.status) as Job["status"],
     branch: String(r.branch),
+    prUrl: String(r.pr_url),
     error: String(r.error),
     createdAt: Number(r.created_at),
   };
@@ -164,25 +189,30 @@ export async function createJob(input: { projectId: string; title: string; promp
     prompt: input.prompt,
     status: "pending",
     branch: "",
+    prUrl: "",
     error: "",
     createdAt: Date.now(),
   };
   await db.execute({
-    sql: `INSERT INTO jobs (id, project_id, title, prompt, status, branch, error, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [job.id, job.projectId, job.title, job.prompt, job.status, job.branch, job.error, job.createdAt],
+    sql: `INSERT INTO jobs (id, project_id, title, prompt, status, branch, pr_url, error, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [job.id, job.projectId, job.title, job.prompt, job.status, job.branch, job.prUrl, job.error, job.createdAt],
   });
   return job;
 }
 
+// Map camelCase Job fields → snake_case columns for the patchable subset.
+const JOB_COLUMNS = { status: "status", branch: "branch", prUrl: "pr_url", error: "error" } as const;
+
 export async function patchJob(
   id: string,
-  fields: Partial<Pick<Job, "status" | "branch" | "error">>,
+  fields: Partial<Pick<Job, "status" | "branch" | "prUrl" | "error">>,
 ): Promise<void> {
   const sets: string[] = [];
   const args: (string | number)[] = [];
   for (const [k, v] of Object.entries(fields)) {
-    const col = k === "status" ? "status" : k; // 1:1 mapping for these fields
+    const col = JOB_COLUMNS[k as keyof typeof JOB_COLUMNS];
+    if (!col) continue;
     sets.push(`${col} = ?`);
     args.push(v as string);
   }

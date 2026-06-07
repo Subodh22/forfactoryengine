@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getJob, getProject, patchJob, type Job } from "./db";
+import { getJob, getProject, getSetting, patchJob, type Job } from "./db";
 import { broadcast } from "./events";
 import { createClaudeSession } from "./agent/claude-runner";
-import { createWorktree, removeWorktree, getChangedFiles, commitOnly, ensureRepoCloned } from "./agent/worktree";
+import { createWorktree, removeWorktree, getChangedFiles, commitOnly, pushBranch, ensureRepoCloned } from "./agent/worktree";
 import { buildRepoMap } from "./agent/repo-map";
+import { createPR } from "./agent/github";
 
 // Simple in-process job queue with bounded concurrency. The engine owns
 // execution; no external poller needed.
@@ -31,7 +32,7 @@ function pump(): void {
 async function updateStatus(
   jobId: string,
   status: Job["status"],
-  fields: Partial<Pick<Job, "branch" | "error">> = {},
+  fields: Partial<Pick<Job, "branch" | "prUrl" | "error">> = {},
 ): Promise<void> {
   await patchJob(jobId, { status, ...fields });
   const job = await getJob(jobId);
@@ -84,14 +85,31 @@ async function runJob(jobId: string): Promise<void> {
     const changed = getChangedFiles(worktreePath);
     log(`Changed files: ${changed.length ? changed.join(", ") : "none"}`);
 
+    let prUrl = "";
     if (changed.length > 0) {
       const committed = commitOnly(worktreePath, `feat: ${job.title}\n\nAutomated by Factory`);
       log(committed ? `Committed to ${wt.branch}.` : "Nothing to commit.");
+
+      // If the project is backed by a GitHub repo and we have a token (per-project
+      // or the connected account), push the branch and open a PR.
+      const token = project.githubToken || (await getSetting("githubToken")) || "";
+      if (committed && project.repo.includes("/") && token) {
+        try {
+          log(`Pushing ${wt.branch} and opening a PR…`);
+          pushBranch(worktreePath, wt.branch);
+          const [owner, repo] = project.repo.split("/");
+          const pr = await createPR(token, owner!, repo!, wt.branch, project.defaultBranch, job.title, "Automated by Factory.");
+          prUrl = pr.url;
+          log(`Opened PR #${pr.number}: ${pr.url}`);
+        } catch (err) {
+          log(`Note: couldn't open a PR (${String(err)}). Work is committed on ${wt.branch}.`);
+        }
+      }
     } else if (!turn.assistantText.trim() && !turn.resultText.trim()) {
       throw new Error("Claude produced no output");
     }
 
-    await updateStatus(jobId, "done");
+    await updateStatus(jobId, "done", prUrl ? { prUrl } : {});
     log("Job complete.");
   } catch (err) {
     await updateStatus(jobId, "failed", { error: String(err) });

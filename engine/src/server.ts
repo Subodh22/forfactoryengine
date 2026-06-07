@@ -2,10 +2,11 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listJobs, createJob, listProjects, createProject } from "./db";
+import { listJobs, createJob, listProjects, createProject, getSetting, setSetting } from "./db";
 import { attachWebsocket, broadcast } from "./events";
 import { enqueue } from "./runner";
 import { checkAuth, authEnabled } from "./auth";
+import { getUser, fetchUserRepos } from "./agent/github";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIST = path.resolve(__dirname, "../../ui/dist");
@@ -65,6 +66,29 @@ export function startServer(port: number): http.Server {
         return sendJson(res, 401, { error: "unauthorized" });
       }
 
+      // ── GitHub ──
+      if (req.method === "GET" && pathname === "/api/github/status") {
+        const login = await getSetting("githubLogin");
+        return sendJson(res, 200, { connected: Boolean(login), login: login ?? "" });
+      }
+      if (req.method === "POST" && pathname === "/api/github/connect") {
+        const token = String((await readBody(req)).token ?? "").trim();
+        if (!token) return sendJson(res, 400, { error: "token required" });
+        try {
+          const { login } = await getUser(token);
+          await setSetting("githubToken", token);
+          await setSetting("githubLogin", login);
+          return sendJson(res, 200, { login });
+        } catch {
+          return sendJson(res, 400, { error: "invalid GitHub token" });
+        }
+      }
+      if (req.method === "GET" && pathname === "/api/github/repos") {
+        const token = await getSetting("githubToken");
+        if (!token) return sendJson(res, 400, { error: "connect GitHub first" });
+        return sendJson(res, 200, await fetchUserRepos(token));
+      }
+
       // ── projects ──
       if (req.method === "GET" && pathname === "/api/projects") return sendJson(res, 200, await listProjects());
       if (req.method === "POST" && pathname === "/api/projects") {
@@ -77,10 +101,12 @@ export function startServer(port: number): http.Server {
         // first run (ensureRepoCloned). One of the two is required.
         if (!localPath && !repo) return sendJson(res, 400, { error: "localPath or repo required" });
         if (localPath && !fs.existsSync(localPath)) return sendJson(res, 400, { error: `path not found: ${localPath}` });
+        // Repo projects inherit the connected GitHub token (for private clones + PRs).
+        const githubToken = String(b.githubToken ?? "") || (repo ? (await getSetting("githubToken")) ?? "" : "");
         const project = await createProject({
           name, localPath, repo,
           defaultBranch: String(b.defaultBranch ?? "main"),
-          githubToken: String(b.githubToken ?? ""),
+          githubToken,
           agentRules: String(b.agentRules ?? ""),
         });
         broadcast({ type: "project.created", project });
