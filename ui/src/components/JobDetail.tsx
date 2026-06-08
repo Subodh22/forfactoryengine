@@ -71,6 +71,31 @@ export function JobDetail({ jobId, onRedo }: Props) {
     finally { setApproving(false); }
   }
 
+  const [activeTab, setActiveTab] = useState<"output" | "chat">("output");
+  const [unseenChat, setUnseenChat] = useState(false);
+  const [unseenOutput, setUnseenOutput] = useState(false);
+  const prevMessagesLen = useRef(messages.length);
+  const prevOutputLen2 = useRef(output.length);
+
+  useEffect(() => {
+    if (messages.length > prevMessagesLen.current && activeTab !== "chat") {
+      setUnseenChat(true);
+    }
+    prevMessagesLen.current = messages.length;
+  }, [messages.length, activeTab]);
+
+  useEffect(() => {
+    if (output.length > prevOutputLen2.current && activeTab !== "output") {
+      setUnseenOutput(true);
+    }
+    prevOutputLen2.current = output.length;
+  }, [output.length, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "chat") setUnseenChat(false);
+    if (activeTab === "output") setUnseenOutput(false);
+  }, [activeTab]);
+
   const [redoOpen, setRedoOpen] = useState(false);
   const [redoPrompt, setRedoPrompt] = useState("");
   const [redoImages, setRedoImages] = useState<string[]>([]);
@@ -257,16 +282,24 @@ export function JobDetail({ jobId, onRedo }: Props) {
         )}
       </div>
 
-      {/* Terminal output */}
-      <div className={`overflow-hidden flex flex-col min-h-0 ${(messages.length > 0 || canChat) ? "flex-[3] min-h-[150px]" : "flex-1"}`}>
+      {/* Tabbed output / chat area */}
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         {isRunning && (
           <div className="h-1 w-full bg-[#2a2722] flex-shrink-0 overflow-hidden relative">
             <style>{`@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}`}</style>
             <div className={`absolute h-full w-1/3 ${isStuck ? "bg-red-500" : isThinking ? "bg-amber-500" : "bg-[#3bd16f]"}`} style={{ animation: "slide 2s linear infinite" }} />
           </div>
         )}
-        <div className="px-4 py-2 border-b-2 border-[#2a2722] flex items-center gap-2 flex-shrink-0 bg-ink">
-          <span className="font-data text-[10px] text-[#6b8a6b] tracking-widest uppercase flex-1">Agent Output</span>
+        <div className="px-4 py-0 border-b-2 border-[#2a2722] flex items-center gap-0 flex-shrink-0 bg-ink">
+          <button onClick={() => setActiveTab("output")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "output" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
+            Agent Output
+            {unseenOutput && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
+          </button>
+          <button onClick={() => setActiveTab("chat")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "chat" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
+            Chat
+            {unseenChat && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
+          </button>
+          <span className="flex-1" />
           {isRunning && isStuck ? (
             <span className="flex items-center gap-1.5 font-data text-[10px] text-red-400"><span className="w-1.5 h-1.5 bg-red-400 animate-pulse flex-shrink-0" />no output {silentSecs}s</span>
           ) : isRunning && isThinking ? (
@@ -278,92 +311,86 @@ export function JobDetail({ jobId, onRedo }: Props) {
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
-          {output ? (
-            <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
-              {output.split("\n").map((raw, i) => {
-                if (!raw) return <span key={i}>{"\n"}</span>;
-                const { type, text } = parseLine(raw);
-                return <span key={i} className={lineClass(type)}>{text}{"\n"}</span>;
-              })}
-              {isRunning && <span className="inline-block w-2 h-3.5 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60" />}
-            </pre>
-          ) : (
-            <p className="text-xs text-[#6b8a6b] italic font-mono">{job.status === "pending" ? "Waiting to start… click Run on the card" : "No output yet…"}</p>
-          )}
-          <div ref={bottomRef} />
-        </div>
+        {activeTab === "output" ? (
+          <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
+            {output ? (
+              <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
+                {output.split("\n").map((raw, i) => {
+                  if (!raw) return <span key={i}>{"\n"}</span>;
+                  const { type, text } = parseLine(raw);
+                  return <span key={i} className={lineClass(type)}>{text}{"\n"}</span>;
+                })}
+                {isRunning && <span className="inline-block w-2 h-3.5 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60" />}
+              </pre>
+            ) : (
+              <p className="text-xs text-[#6b8a6b] italic font-mono">{job.status === "pending" ? "Waiting to start… click Run on the card" : "No output yet…"}</p>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        ) : (
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+            <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
+              {messages.length > 0 ? (
+                <div className="space-y-4">
+                  {messages.map((msg) => (
+                    <div key={msg.id} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                      <div className="font-data text-[10px] font-bold uppercase mt-1 flex-shrink-0 text-[#6b8a6b] w-12 text-center leading-tight">
+                        {msg.role === "assistant" ? "Claude" : "You"}
+                      </div>
+                      <div className={`text-sm px-4 py-3 max-w-[80%] whitespace-pre-wrap border-2 leading-relaxed ${msg.role === "assistant" ? "border-[#3a3a34] bg-[#1a1a16] text-[#cfe8cf]" : "border-[#3bd16f] bg-[#3bd16f]/10 text-[#cfe8cf]"}`}>
+                        {msg.images && msg.images.length > 0 && (
+                          <div className="flex gap-1.5 flex-wrap mb-2">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
+                        )}
+                        {msg.text}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={chatBottomRef} />
+                </div>
+              ) : (
+                <p className="text-xs text-[#6b8a6b] italic font-mono">No chat messages yet…</p>
+              )}
+            </div>
+
+            {canChat && (
+              <div className={`flex-shrink-0 p-3 border-t-2 border-[#2a2722] ${isWaiting || isClarifying ? "bg-[#b8860b]/10" : "bg-ink"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+                {attachedFiles.length > 0 && (
+                  <div className="flex gap-2 mb-2 flex-wrap">{attachedFiles.map((src, i) => <AttachmentPreview key={i} src={src} size={56} onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))} />)}</div>
+                )}
+                <form onSubmit={handleReply} className="flex gap-2 items-end">
+                  <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
+                  <div className="flex flex-col gap-1 flex-shrink-0">
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 bg-[#1a1a16] border-2 border-[#3a3a34] text-[#6b8a6b] hover:bg-[#3bd16f]/10 hover:text-[#cfe8cf] transition-colors" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 bg-[#1a1a16] border-2 border-[#3a3a34] text-[#6b8a6b] hover:bg-[#3bd16f]/10 hover:text-[#cfe8cf] transition-colors" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
+                  </div>
+                  <textarea
+                    value={reply}
+                    onChange={(e) => {
+                      setReply(e.target.value);
+                      e.currentTarget.style.height = "auto";
+                      e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 120) + "px";
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleReply(e as unknown as React.FormEvent); } }}
+                    placeholder={isPending ? "Add to prompt… (Cmd+Enter to send)" : isWaiting || isClarifying ? "Reply to Claude… (Cmd+Enter to send)" : isRunning ? "Queue a message… (Cmd+Enter to send)" : "Message Claude… (Cmd+Enter to send)"}
+                    onPaste={onPaste}
+                    rows={2}
+                    className="flex-1 bg-[#1a1a16] border-2 border-[#3a3a34] px-3 py-2.5 font-mono text-sm text-[#cfe8cf] placeholder:text-[#6b8a6b] focus:outline-none focus:border-[#3bd16f] transition-colors resize-none leading-relaxed"
+                    autoFocus={isWaiting || isClarifying}
+                  />
+                  <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-4 py-2.5 bg-[#3bd16f] text-ink border-2 border-[#3bd16f] disabled:opacity-40 font-data text-xs uppercase flex items-center gap-1.5 brutal-press self-end flex-shrink-0"><Send className="w-3.5 h-3.5" />{sending ? "…" : "Send"}</button>
+                </form>
+                <p className="font-data text-[10px] text-[#6b8a6b] mt-1.5 uppercase">
+                  {isWaiting && "Claude has a question — reply to continue · "}
+                  {isClarifying && "Answer Claude\u2019s questions to continue · "}
+                  Cmd+Enter to send · paste or drop to attach
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {isEpic && <DelegatorPanel epicId={jobId} />}
-
-      {/* Chat panel — messages + input as one unified section */}
-      {(messages.length > 0 || canChat) && (
-        <div className="flex-[2] min-h-[240px] flex flex-col border-t-4 border-ink overflow-hidden">
-          {/* Panel header with status hint */}
-          <div className={`px-4 py-2 border-b-2 border-ink flex-shrink-0 flex items-center gap-3 ${isWaiting ? "bg-[#b8860b]/15" : "bg-concrete"}`}>
-            <span className="font-data text-xs text-muted tracking-widest uppercase">Chat</span>
-            {isWaiting && <span className="font-data text-xs text-[#b8860b] font-bold uppercase">Claude has a question — reply to continue</span>}
-            {isClarifying && <span className="font-data text-xs text-[#b8860b] font-bold uppercase">Answer Claude&apos;s questions to continue</span>}
-            {isPending && <span className="font-data text-xs text-muted uppercase">Add instructions before this job runs</span>}
-            {isRunning && !isWaiting && !isClarifying && <span className="font-data text-xs text-muted uppercase">Message queued for next turn</span>}
-            {isDelegating && <span className="font-data text-xs text-muted uppercase">Epic session active</span>}
-            {isFinished && <span className="font-data text-xs text-muted uppercase">Session continues</span>}
-          </div>
-
-          {/* Messages scroll area */}
-          {messages.length > 0 && (
-            <div className={`flex-1 overflow-y-auto p-4 space-y-4 min-h-0 ${isWaiting || isClarifying ? "bg-[#b8860b]/5" : "bg-concrete"}`}>
-              {messages.map((msg) => (
-                <div key={msg.id} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                  <div className="font-data text-xs font-bold uppercase mt-1 flex-shrink-0 text-ink w-12 text-center leading-tight">
-                    {msg.role === "assistant" ? "Claude" : "You"}
-                  </div>
-                  <div className={`text-sm px-4 py-3 max-w-[80%] whitespace-pre-wrap border-2 border-ink leading-relaxed ${msg.role === "assistant" ? "bg-paper text-ink" : "bg-ink text-concrete"}`}>
-                    {msg.images && msg.images.length > 0 && (
-                      <div className="flex gap-1.5 flex-wrap mb-2">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
-                    )}
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-              <div ref={chatBottomRef} />
-            </div>
-          )}
-
-          {/* Input area */}
-          {canChat && (
-            <div className={`flex-shrink-0 p-3 ${messages.length > 0 ? "border-t-2 border-ink" : "flex-1 flex flex-col justify-end"} ${isWaiting || isClarifying ? "bg-[#b8860b]/10" : "bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-              {attachedFiles.length > 0 && (
-                <div className="flex gap-2 mb-2 flex-wrap">{attachedFiles.map((src, i) => <AttachmentPreview key={i} src={src} size={56} onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))} />)}</div>
-              )}
-              <form onSubmit={handleReply} className="flex gap-2 items-end">
-                <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-                <div className="flex flex-col gap-1 flex-shrink-0">
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
-                  <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
-                </div>
-                <textarea
-                  value={reply}
-                  onChange={(e) => {
-                    setReply(e.target.value);
-                    e.currentTarget.style.height = "auto";
-                    e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 120) + "px";
-                  }}
-                  onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleReply(e as unknown as React.FormEvent); } }}
-                  placeholder={isPending ? "Add to prompt… (Cmd+Enter to send)" : isWaiting || isClarifying ? "Reply to Claude… (Cmd+Enter to send)" : isRunning ? "Queue a message… (Cmd+Enter to send)" : "Message Claude… (Cmd+Enter to send)"}
-                  onPaste={onPaste}
-                  rows={2}
-                  className="flex-1 bg-paper border-2 border-ink px-3 py-2.5 font-mono text-sm text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow resize-none leading-relaxed"
-                  autoFocus={isWaiting || isClarifying}
-                />
-                <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-4 py-2.5 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-xs uppercase flex items-center gap-1.5 brutal-press self-end flex-shrink-0"><Send className="w-3.5 h-3.5" />{sending ? "…" : "Send"}</button>
-              </form>
-              <p className="font-data text-[10px] text-muted mt-1.5 uppercase">Cmd+Enter to send · paste or drop to attach</p>
-            </div>
-          )}
-        </div>
-      )}
 
       {isPlanReview && (
         <div className="border-t-4 border-[#b8860b] bg-[#b8860b]/15 p-3 flex-shrink-0 flex items-center gap-3">
