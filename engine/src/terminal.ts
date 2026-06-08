@@ -1,44 +1,67 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { emitTerm } from "./events";
+import os from "node:os";
+import fs from "node:fs";
+import * as pty from "node-pty";
+import type { WebSocket } from "ws";
+import type { IncomingMessage } from "node:http";
 
-// Non-interactive web terminal. Each command is spawned in the project's
-// localPath; stdout/stderr stream back over the engine WebSocket as `term.output`
-// events keyed by the browser's session id. Not a PTY — but enough for builds,
-// git, npm, tests, etc. stderr and the final exit code use \x00-markers the UI
-// colour-codes, mirroring the agent stream convention.
+// Real interactive web terminal. Each browser TerminalPanel opens a WebSocket to
+// /term; we allocate a pseudo-terminal (PTY) running the user's shell in the
+// project's directory and pipe raw bytes both ways. Unlike the old one-shot
+// runner this gives a true TTY, so interactive programs (claude, vim, REPLs,
+// less) work. One PTY per socket; it dies when the socket closes.
 
-const terminalProcs = new Map<string, ChildProcess>();
+// Messages from the browser are JSON: {i:"keystrokes"} for input, {r:[cols,rows]}
+// for a resize. PTY output is sent back as raw text frames.
+interface TermClientMsg { i?: string; r?: [number, number] }
 
-export function runTerminalCommand(sessionId: string, cwd: string, command: string): void {
-  const existing = terminalProcs.get(sessionId);
-  if (existing) {
-    try { existing.kill(); } catch { /* already gone */ }
+function pickShell(): string {
+  if (process.platform === "win32") return process.env.COMSPEC || "powershell.exe";
+  for (const sh of [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"]) {
+    if (sh && fs.existsSync(sh)) return sh;
   }
+  return "/bin/sh";
+}
 
-  let child: ChildProcess;
+export function handleTerminalConnection(socket: WebSocket, req: IncomingMessage): void {
+  const url = new URL(req.url ?? "/term", "http://localhost");
+  const cwd = url.searchParams.get("cwd") || os.homedir();
+  const cols = Number(url.searchParams.get("cols")) || 80;
+  const rows = Number(url.searchParams.get("rows")) || 24;
+  const safeCwd = fs.existsSync(cwd) ? cwd : os.homedir();
+
+  let term: pty.IPty;
   try {
-    child = spawn(command, { cwd, shell: true, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    term = pty.spawn(pickShell(), [], {
+      name: "xterm-256color",
+      cols,
+      rows,
+      cwd: safeCwd,
+      env: { ...process.env, TERM: "xterm-256color" } as Record<string, string>,
+    });
   } catch (err) {
-    emitTerm(sessionId, `\x00stderr\x00${(err as Error).message}\n`);
-    emitTerm(sessionId, `\x00exit\x001`);
+    try { socket.send(`\r\n[factory] failed to start terminal: ${(err as Error).message}\r\n`); } catch { /* ignore */ }
+    socket.close();
     return;
   }
 
-  terminalProcs.set(sessionId, child);
-  child.stdout?.on("data", (d: Buffer) => emitTerm(sessionId, d.toString()));
-  child.stderr?.on("data", (d: Buffer) => emitTerm(sessionId, `\x00stderr\x00${d.toString()}`));
-  child.on("error", (err) => emitTerm(sessionId, `\x00stderr\x00${err.message}\n`));
-  child.on("close", (code) => {
-    terminalProcs.delete(sessionId);
-    emitTerm(sessionId, `\x00exit\x00${code ?? 0}`);
+  const onData = term.onData((data) => {
+    if (socket.readyState === socket.OPEN) socket.send(data);
   });
-}
+  const onExit = term.onExit(({ exitCode }) => {
+    try { if (socket.readyState === socket.OPEN) socket.send(`\r\n[exit ${exitCode}]\r\n`); } catch { /* ignore */ }
+    socket.close();
+  });
 
-export function killTerminal(sessionId: string): boolean {
-  const child = terminalProcs.get(sessionId);
-  if (child) {
-    try { child.kill(); } catch { /* already gone */ }
-    return true;
-  }
-  return false;
+  socket.on("message", (raw) => {
+    let msg: TermClientMsg;
+    try { msg = JSON.parse(raw.toString()) as TermClientMsg; } catch { return; }
+    if (typeof msg.i === "string") term.write(msg.i);
+    else if (Array.isArray(msg.r)) { try { term.resize(msg.r[0] || 80, msg.r[1] || 24); } catch { /* ignore */ } }
+  });
+
+  socket.on("close", () => {
+    onData.dispose();
+    onExit.dispose();
+    try { term.kill(); } catch { /* already gone */ }
+  });
 }

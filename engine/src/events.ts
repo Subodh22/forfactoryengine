@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import type { Job, Project } from "./db";
 import { checkAuth } from "./auth";
 import { appendOutput } from "./output-log";
+import { handleTerminalConnection } from "./terminal";
 
 // The live wire. The engine owns every write, so it broadcasts each change to all
 // connected clients over WebSocket — this replaces Convex's reactive queries AND
@@ -26,13 +27,28 @@ export type ServerEvent =
 let wss: WebSocketServer | null = null;
 
 export function attachWebsocket(server: Server): void {
-  wss = new WebSocketServer({
-    server,
-    path: "/ws",
-    verifyClient: (info, done) => done(checkAuth(info.req)),
-  });
-  wss.on("connection", (socket) => {
+  // Two endpoints on one HTTP server: /ws is the live event bus (broadcast),
+  // /term is a raw PTY pipe (one socket ↔ one pseudo-terminal). We route upgrades
+  // by path manually so each gets its own WebSocketServer.
+  const eventWss = new WebSocketServer({ noServer: true });
+  const termWss = new WebSocketServer({ noServer: true });
+  wss = eventWss;
+
+  eventWss.on("connection", (socket) => {
     socket.send(JSON.stringify({ type: "hello" } satisfies ServerEvent));
+  });
+  termWss.on("connection", (socket, req) => handleTerminalConnection(socket, req));
+
+  server.on("upgrade", (req, socket, head) => {
+    let pathname: string;
+    try { pathname = new URL(req.url ?? "", "http://localhost").pathname; }
+    catch { socket.destroy(); return; }
+
+    if (pathname !== "/ws" && pathname !== "/term") { socket.destroy(); return; }
+    if (!checkAuth(req)) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); socket.destroy(); return; }
+
+    const target = pathname === "/term" ? termWss : eventWss;
+    target.handleUpgrade(req, socket, head, (ws) => target.emit("connection", ws, req));
   });
 }
 
