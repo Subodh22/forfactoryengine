@@ -90,9 +90,4 @@ export const getEnv = (localPath: string) =>
 export const saveEnv = (localPath: string, content: string) =>
   api("/api/projects/env", { method: "POST", body: JSON.stringify({ localPath, content }) });
 
-// ── Terminal ─────────────────────────────────────────────────────────────
-export const terminalExec = (sessionId: string, cwd: string, command: string) =>
-  api("/api/terminal/exec", { method: "POST", body: JSON.stringify({ sessionId, cwd, command }) });
-
-export const terminalKill = (sessionId: string) =>
-  api("/api/terminal/kill", { method: "POST", body: JSON.stringify({ sessionId }) });
+// Terminal is now an interactive PTY over the /term WebSocket (see TerminalPanel).

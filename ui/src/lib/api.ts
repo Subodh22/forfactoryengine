@@ -38,6 +38,20 @@ export function wsUrl(): string {
   return u.toString();
 }
 
+// WebSocket URL for an interactive PTY rooted at `cwd`.
+export function termUrl(cwd: string, cols: number, rows: number): string {
+  const base = ENGINE_URL || location.origin;
+  const u = new URL(base);
+  u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+  u.pathname = "/term";
+  u.searchParams.set("cwd", cwd);
+  u.searchParams.set("cols", String(cols));
+  u.searchParams.set("rows", String(rows));
+  const t = getToken();
+  if (t) u.searchParams.set("token", t);
+  return u.toString();
+}
+
 // ── Client-side attachment encoding (no server round-trip needed) ────────────
 const MAX_ATTACHMENT_BYTES = 900_000;
 

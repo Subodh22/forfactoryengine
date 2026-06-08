@@ -14,7 +14,6 @@ import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
 import { readOutput, clearOutput } from "./output-log";
 import { scheduleDelegationCheck } from "./delegator-scheduler";
-import { runTerminalCommand, killTerminal } from "./terminal";
 import { getClaudeUsage } from "./usage";
 import { checkAuth, authEnabled } from "./auth";
 import { getUser, fetchUserRepos, createRepo } from "./agent/github";
@@ -378,21 +377,7 @@ export function startServer(port: number): http.Server {
         }
       }
 
-      // ── Terminal ──
-      if (method === "POST" && pathname === "/api/terminal/exec") {
-        const b = await readBody(req);
-        const sessionId = String(b.sessionId ?? "");
-        const cwd = String(b.cwd ?? "");
-        const command = String(b.command ?? "");
-        if (!sessionId || !cwd || !command) return sendJson(res, 400, { error: "sessionId, cwd and command are required" });
-        runTerminalCommand(sessionId, cwd, command);
-        return sendJson(res, 202, { ok: true });
-      }
-      if (method === "POST" && pathname === "/api/terminal/kill") {
-        const b = await readBody(req);
-        const killed = killTerminal(String(b.sessionId ?? ""));
-        return sendJson(res, 200, { ok: true, killed });
-      }
+      // Terminal is now a PTY over the /term WebSocket (see events.ts + terminal.ts).
 
       if (method === "GET") return serveStatic(pathname, res);
       sendJson(res, 404, { error: "not found" });
