@@ -84,6 +84,24 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
   function removeRow(id: string) { setRows((rs) => rs.filter((r) => r.id !== id)); }
   function addPair() { setRows((rs) => [...rs, { kind: "pair", id: nextId(), key: "", value: "", exported: false }]); }
 
+  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>, rowId: string) {
+    const text = e.clipboardData.getData("text/plain");
+    if (!text.includes("=") && !text.includes("\n")) return;
+    const parsed = parseEnv(text).filter((r) => r.kind === "pair");
+    if (parsed.length === 0) return;
+    e.preventDefault();
+    setRows((rs) => {
+      const idx = rs.findIndex((r) => r.id === rowId);
+      const target = rs[idx];
+      const replaceTarget = target && target.kind === "pair" && !target.key && !target.value;
+      const before = replaceTarget ? rs.slice(0, idx) : rs.slice(0, idx + 1);
+      const after = replaceTarget ? rs.slice(idx + 1) : rs.slice(idx + 1);
+      return [...before, ...parsed, ...after];
+    });
+    const count = parsed.length;
+    toast.success(`Pasted ${count} variable${count !== 1 ? "s" : ""}`);
+  }
+
   const pairCount = rows.filter((r) => r.kind === "pair").length;
 
   return (
@@ -132,7 +150,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
             {rows.map((r) =>
               r.kind === "pair" ? (
                 <div key={r.id} className="flex items-center gap-1.5 group">
-                  <input value={r.key} onChange={(e) => updatePair(r.id, { key: e.target.value })} placeholder="KEY" spellCheck={false} className="w-2/5 bg-paper border-2 border-ink px-2.5 py-1.5 font-mono text-xs font-bold text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted" />
+                  <input value={r.key} onChange={(e) => updatePair(r.id, { key: e.target.value })} onPaste={(e) => handlePaste(e, r.id)} placeholder="KEY" spellCheck={false} className="w-2/5 bg-paper border-2 border-ink px-2.5 py-1.5 font-mono text-xs font-bold text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted" />
                   <span className="text-ink text-xs font-bold">=</span>
                   <input value={r.value} onChange={(e) => updatePair(r.id, { value: e.target.value })} placeholder="value" spellCheck={false} type={!reveal && looksSecret(r.key) ? "password" : "text"} className="flex-1 bg-paper border-2 border-ink px-2.5 py-1.5 font-mono text-xs text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted" />
                   <button onClick={() => removeRow(r.id)} title="Remove" className="text-muted hover:text-[#d6210f] p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
