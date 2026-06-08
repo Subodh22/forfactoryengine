@@ -15,6 +15,7 @@ import { buildRepoMap } from "./agent/repo-map";
 import { parseDataUrl, safeFilename } from "./attachments";
 import { sendJobNotification } from "./notify";
 import { planEpic } from "./delegator";
+import { startGuidedEpic, continueGuidedEpic, isGuided, reapGuided } from "./guided";
 import { scheduleDelegationCheck } from "./delegator-scheduler";
 
 // ── In-process queue ─────────────────────────────────────────────────────────
@@ -207,8 +208,12 @@ export async function startJob(jobId: string): Promise<void> {
     // -- Epic: plan & split, then hand to the scheduler ----------------------
     if (job.kind === "epic") {
       if (!job.delegatorPlan) {
-        await planEpic(job, project);
-        scheduleDelegationCheck();
+        if (job.needsApproval) {
+          await startGuidedEpic(job, project);   // guided: clarify → stack → plan_review
+        } else {
+          await planEpic(job, project);          // express: foundation-first, auto-build
+          scheduleDelegationCheck();
+        }
       }
       processing.delete(jobId);
       return;
@@ -443,6 +448,7 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
 
 export function cancelJob(jobId: string): void {
   if (processing.has(jobId)) cancelledJobs.add(jobId);
+  reapGuided(jobId);
   cleanupSession(jobId);
   processing.delete(jobId);
   const i = queue.indexOf(jobId);
@@ -458,6 +464,7 @@ export function getActiveJobIds(): string[] {
 /** Entry point for a user reply (POST /api/reply/:jobId). Returns true if the
  *  reply was accepted (a live session exists, or a finished job can be resumed). */
 export async function deliverReply(jobId: string, text: string, images: string[]): Promise<boolean> {
+  if (isGuided(jobId)) return continueGuidedEpic(jobId, text); // guided discovery owns its replies
   const ctx = liveContext.get(jobId);
   if (ctx && activeSessions.has(jobId)) {
     ctx.queue.push({ text, images });

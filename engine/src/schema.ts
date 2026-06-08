@@ -81,6 +81,13 @@ export const BuildPlanSchema = z.object({
 });
 export type BuildPlan = z.infer<typeof BuildPlanSchema>;
 
+/** What the model returns for the stack+plan turn — one schema-constrained blob. */
+export const DiscoveryResultSchema = z.object({
+  stack: StackChoiceSchema,
+  plan: BuildPlanSchema,
+});
+export type DiscoveryResult = z.infer<typeof DiscoveryResultSchema>;
+
 // ── Pipeline phase: the discriminated union that makes illegal states impossible
 // (e.g. you cannot be in `plan_review` without a stack + plan).
 export const BuildPhaseSchema = z.discriminatedUnion("phase", [

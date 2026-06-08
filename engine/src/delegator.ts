@@ -63,7 +63,7 @@ into your reply.`;
 }
 
 /** Structural checks zod can't express: unique ids, known deps, no cycles. */
-function validateDag(subtasks: PlanSubtask[]): void {
+export function validateDag(subtasks: PlanSubtask[]): void {
   const ids = new Set<string>();
   for (const s of subtasks) {
     if (ids.has(s.localId)) throw new Error(`duplicate subtask id: ${s.localId}`);
