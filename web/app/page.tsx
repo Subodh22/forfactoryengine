@@ -7,7 +7,7 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
-import { TerminalPanel } from "@/components/TerminalPanel";
+import { TerminalTabs } from "@/components/TerminalTabs";
 import { CreateProject } from "@/components/CreateProject";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { EnvPanel } from "@/components/EnvPanel";
@@ -225,7 +225,7 @@ export default function Home() {
                 <p className="font-data text-[11px] uppercase text-muted">Choose a repo from the top bar to get started</p>
               </div>
             )}
-            {tab === "terminal" && project && <TerminalPanel project={{ name: project.name, localPath: project.localPath }} />}
+            {tab === "terminal" && project && <TerminalTabs project={{ name: project.name, localPath: project.localPath }} />}
             {tab === "terminal" && !project && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
                 <p className="font-display uppercase text-sm text-ink">Select a project to open a terminal</p>
