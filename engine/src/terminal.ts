@@ -17,7 +17,7 @@ export function runTerminalCommand(sessionId: string, cwd: string, command: stri
 
   let child: ChildProcess;
   try {
-    child = spawn(command, { cwd, shell: true, env: process.env });
+    child = spawn(command, { cwd, shell: true, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
   } catch (err) {
     emitTerm(sessionId, `\x00stderr\x00${(err as Error).message}\n`);
     emitTerm(sessionId, `\x00exit\x001`);
