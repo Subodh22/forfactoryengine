@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, ChevronDown, ChevronUp } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
@@ -59,6 +59,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [showError, setShowError] = useState(false);
 
   const [redoOpen, setRedoOpen] = useState(false);
   const [redoPrompt, setRedoPrompt] = useState("");
@@ -323,9 +324,16 @@ export function JobDetail({ jobId, onRedo }: Props) {
       )}
 
       {job.error && (
-        <div className="p-4 border-t-4 border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
-          <p className="font-data text-[10px] font-bold text-[#d6210f] mb-1 uppercase tracking-widest">Error</p>
-          <pre className="text-xs text-[#a8190b] font-mono whitespace-pre-wrap">{job.error}</pre>
+        <div className="border-t-4 border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
+          <button onClick={() => setShowError(v => !v)} className="w-full flex items-center justify-between px-4 py-2 font-data text-[10px] font-bold text-[#d6210f] uppercase tracking-widest hover:bg-[#d6210f]/10 transition-colors">
+            <span>Error</span>
+            {showError ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+          {showError && (
+            <div className="px-4 pb-4">
+              <pre className="text-xs text-[#a8190b] font-mono whitespace-pre-wrap">{job.error}</pre>
+            </div>
+          )}
         </div>
       )}
     </div>
