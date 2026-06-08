@@ -293,6 +293,7 @@ export function startServer(port: number): http.Server {
           kind,
           model: String(b.model ?? ""),
           effort: (String(b.effort ?? "") || "") as JobEffort,
+          needsApproval: b.needsApproval === true, // guided create → clarify + plan gate
         });
         broadcast({ type: "job.created", job });
         if (wantsRun) enqueue(job.id);
