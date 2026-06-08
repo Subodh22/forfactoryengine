@@ -14,6 +14,7 @@ export interface CreateJobInput {
   model?: string;
   effort?: string;
   autoRun?: boolean;
+  parentJobId?: string;
 }
 
 export const createJob = (input: CreateJobInput) =>

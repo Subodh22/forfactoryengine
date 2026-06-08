@@ -287,11 +287,13 @@ export function startServer(port: number): http.Server {
         const kind = (String(b.kind ?? "") || "") as JobKind;
         // Epics must always be queued so the worker plans & splits them.
         const wantsRun = b.autoRun === true || b.status === "queued" || kind === "epic";
+        const parentJobId = String(b.parentJobId ?? "").trim();
         const job = await createJob({
           projectId, title, prompt,
           images: Array.isArray(b.images) ? (b.images as string[]) : [],
           status: wantsRun ? "queued" : "pending",
           kind,
+          parentJobId: parentJobId || undefined,
           model: String(b.model ?? ""),
           effort: (String(b.effort ?? "") || "") as JobEffort,
         });

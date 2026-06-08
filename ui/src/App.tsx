@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, X, Menu } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { TaskListView } from "@/components/TaskListView";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
@@ -50,6 +51,7 @@ function UsagePill({ inputTokens, outputTokens, jobCount }: { inputTokens: numbe
 
 const TAB_LABELS: Record<string, string> = {
   board: "Kanban Board",
+  tasks: "Tasks",
   agents: "Agents",
   chat: "New Job",
   create: "Create Project",
@@ -193,7 +195,7 @@ export function App() {
           <div className="border-b-4 border-ink flex-shrink-0 bg-concrete sticky top-0 z-[5]">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="bg-transparent p-0 h-auto gap-0 rounded-none w-full justify-start overflow-x-auto no-scrollbar">
-                {["board", "agents", "chat", "create", "env", "terminal"].map((t) => (
+                {["board", "tasks", "agents", "chat", "create", "env", "terminal"].map((t) => (
                   <TabsTrigger key={t} value={t} className="font-sans font-bold uppercase text-[13px] tracking-[.3px] px-[22px] py-4 rounded-none border-r-2 border-ink data-[state=active]:bg-ink data-[state=active]:text-concrete data-[state=inactive]:bg-concrete data-[state=inactive]:text-ink hover:data-[state=inactive]:bg-concrete-2 transition-colors flex-shrink-0">
                     {t === "agents" ? (
                       <span className="flex items-center gap-1.5">Agents{runningCount > 0 && <span className="w-1.5 h-1.5 bg-current animate-pulse" />}</span>
@@ -206,6 +208,7 @@ export function App() {
 
           <div className="flex-1 overflow-y-auto p-6 sm:p-12">
             {tab === "board" && <KanbanBoard projectId={projectId} onSelectJob={setSelectedJob} />}
+            {tab === "tasks" && <TaskListView projectId={projectId} onSelectJob={setSelectedJob} />}
             {tab === "agents" && <AgentsGrid projectId={projectId} />}
             {tab === "chat" && projectId && (
               <div className="max-w-[760px] mx-auto"><ChatPanel projectId={projectId} onJobCreated={(id) => { setSelectedJob(id); setTab("board"); }} /></div>
