@@ -465,6 +465,9 @@ export function getActiveJobIds(): string[] {
  *  reply was accepted (a live session exists, or a finished job can be resumed). */
 export async function deliverReply(jobId: string, text: string, images: string[]): Promise<boolean> {
   if (isGuided(jobId)) return continueGuidedEpic(jobId, text); // guided discovery owns its replies
+  // A clarifying epic whose in-memory session was lost (engine restart) — rehydrate it.
+  const guidedJob = await getJob(jobId).catch(() => null);
+  if (guidedJob?.status === "clarifying") return continueGuidedEpic(jobId, text);
   const ctx = liveContext.get(jobId);
   if (ctx && activeSessions.has(jobId)) {
     ctx.queue.push({ text, images });

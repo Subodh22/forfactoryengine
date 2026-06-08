@@ -4,7 +4,7 @@ import { createClaudeSession, type ClaudeSession } from "./agent/claude-runner";
 import { createWorktree, removeWorktree, ensureEpicWorktree } from "./agent/worktree";
 import { emitOutput, emitChat } from "./events";
 import { updateStatus } from "./status";
-import { createChildren, setDelegatorPlan, updateUsage, patchJob, type Job, type Project, type SubtaskInput } from "./db";
+import { createChildren, setDelegatorPlan, updateUsage, patchJob, getJob, getProject, type Job, type Project, type SubtaskInput } from "./db";
 import { validateDag } from "./delegator";
 import { ClarifyOutputSchema, DiscoveryResultSchema, parse, type StackChoice, type BuildPlan } from "./schema";
 
@@ -127,10 +127,31 @@ Then reply with a one-line note. Do not paste the JSON into your reply.`;
   }
 }
 
+/** Rebuild a lost discovery session by resuming the saved Claude session id — the
+ *  engine may have restarted while the epic was mid-clarify (in-memory state is
+ *  wiped on restart). Returns null if it can't be resumed. */
+async function rehydrate(jobId: string): Promise<GuidedSession | undefined> {
+  const job = await getJob(jobId).catch(() => null);
+  if (!job || !job.sessionId) return undefined;
+  const project = await getProject(job.projectId).catch(() => null);
+  if (!project) return undefined;
+  const { worktreePath } = createWorktree(project.localPath, `${jobId}-discovery`, project.defaultBranch);
+  const session = createClaudeSession(worktreePath, job.sessionId); // resume discovery context
+  session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+  session.onChunk((t) => emitOutput(jobId, t));
+  const g: GuidedSession = { session, worktreePath, project, busy: false };
+  sessions.set(jobId, g);
+  return g;
+}
+
 /** A user reply to a guided epic. Returns true if it was handled here. */
 export async function continueGuidedEpic(jobId: string, text: string): Promise<boolean> {
-  const g = sessions.get(jobId);
-  if (!g) return false;
+  let g = sessions.get(jobId);
+  if (!g) {
+    g = await rehydrate(jobId); // engine restarted mid-discovery — rebuild from the saved session
+    if (!g) return false;
+    log(jobId, "Resumed discovery after an engine restart.");
+  }
   if (g.busy) return true; // a turn is already running; drop concurrent replies
   emitChat(jobId, "user", text);
   await updateStatus(jobId, "running").catch(() => {});
