@@ -59,6 +59,31 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<"output" | "chat">("output");
+  const [unseenChat, setUnseenChat] = useState(false);
+  const [unseenOutput, setUnseenOutput] = useState(false);
+  const prevMessagesLen = useRef(messages.length);
+  const prevOutputLen2 = useRef(output.length);
+
+  useEffect(() => {
+    if (messages.length > prevMessagesLen.current && activeTab !== "chat") {
+      setUnseenChat(true);
+    }
+    prevMessagesLen.current = messages.length;
+  }, [messages.length, activeTab]);
+
+  useEffect(() => {
+    if (output.length > prevOutputLen2.current && activeTab !== "output") {
+      setUnseenOutput(true);
+    }
+    prevOutputLen2.current = output.length;
+  }, [output.length, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "chat") setUnseenChat(false);
+    if (activeTab === "output") setUnseenOutput(false);
+  }, [activeTab]);
+
   const [redoOpen, setRedoOpen] = useState(false);
   const [redoPrompt, setRedoPrompt] = useState("");
   const [redoImages, setRedoImages] = useState<string[]>([]);
@@ -242,7 +267,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
         )}
       </div>
 
-      {/* Terminal output */}
+      {/* Tabbed output / chat area */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         {isRunning && (
           <div className="h-1 w-full bg-[#2a2722] flex-shrink-0 overflow-hidden relative">
@@ -250,8 +275,16 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <div className={`absolute h-full w-1/3 ${isStuck ? "bg-red-500" : isThinking ? "bg-amber-500" : "bg-[#3bd16f]"}`} style={{ animation: "slide 2s linear infinite" }} />
           </div>
         )}
-        <div className="px-4 py-2 border-b-2 border-[#2a2722] flex items-center gap-2 flex-shrink-0 bg-ink">
-          <span className="font-data text-[10px] text-[#6b8a6b] tracking-widest uppercase flex-1">Agent Output</span>
+        <div className="px-4 py-0 border-b-2 border-[#2a2722] flex items-center gap-0 flex-shrink-0 bg-ink">
+          <button onClick={() => setActiveTab("output")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "output" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
+            Agent Output
+            {unseenOutput && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
+          </button>
+          <button onClick={() => setActiveTab("chat")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "chat" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
+            Chat
+            {unseenChat && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
+          </button>
+          <span className="flex-1" />
           {isRunning && isStuck ? (
             <span className="flex items-center gap-1.5 font-data text-[10px] text-red-400"><span className="w-1.5 h-1.5 bg-red-400 animate-pulse flex-shrink-0" />no output {silentSecs}s</span>
           ) : isRunning && isThinking ? (
@@ -263,43 +296,47 @@ export function JobDetail({ jobId, onRedo }: Props) {
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
-          {output ? (
-            <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
-              {output.split("\n").map((raw, i) => {
-                if (!raw) return <span key={i}>{"\n"}</span>;
-                const { type, text } = parseLine(raw);
-                return <span key={i} className={lineClass(type)}>{text}{"\n"}</span>;
-              })}
-              {isRunning && <span className="inline-block w-2 h-3.5 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60" />}
-            </pre>
-          ) : (
-            <p className="text-xs text-[#6b8a6b] italic font-mono">{job.status === "pending" ? "Waiting to start… click Run on the card" : "No output yet…"}</p>
-          )}
-          <div ref={bottomRef} />
-        </div>
+        {activeTab === "output" ? (
+          <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
+            {output ? (
+              <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
+                {output.split("\n").map((raw, i) => {
+                  if (!raw) return <span key={i}>{"\n"}</span>;
+                  const { type, text } = parseLine(raw);
+                  return <span key={i} className={lineClass(type)}>{text}{"\n"}</span>;
+                })}
+                {isRunning && <span className="inline-block w-2 h-3.5 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60" />}
+              </pre>
+            ) : (
+              <p className="text-xs text-[#6b8a6b] italic font-mono">{job.status === "pending" ? "Waiting to start… click Run on the card" : "No output yet…"}</p>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
+            {messages.length > 0 ? (
+              <div className="space-y-3">
+                {messages.map((msg) => (
+                  <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                    <div className="font-data text-[10px] font-bold uppercase mt-0.5 flex-shrink-0 text-[#6b8a6b]">{msg.role === "assistant" ? "Claude" : "You"}</div>
+                    <div className={`text-xs px-3 py-2 max-w-[85%] whitespace-pre-wrap border-2 ${msg.role === "assistant" ? "border-[#3a3a34] bg-[#1a1a16] text-[#cfe8cf]" : "border-[#3bd16f] bg-[#3bd16f]/10 text-[#cfe8cf]"}`}>
+                      {msg.images && msg.images.length > 0 && (
+                        <div className="flex gap-1.5 flex-wrap mb-1.5">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
+                      )}
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-[#6b8a6b] italic font-mono">No chat messages yet…</p>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        )}
       </div>
 
       {isEpic && <DelegatorPanel epicId={jobId} />}
-
-      {messages.length > 0 && (
-        <div className="border-t-4 border-ink flex-shrink-0 max-h-64 overflow-y-auto bg-concrete">
-          <div className="px-4 py-2 border-b-2 border-ink"><span className="font-data text-[10px] text-muted tracking-widest uppercase">Chat</span></div>
-          <div className="p-4 space-y-3">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                <div className="font-data text-[10px] font-bold uppercase mt-0.5 flex-shrink-0 text-ink">{msg.role === "assistant" ? "Claude" : "You"}</div>
-                <div className={`text-xs px-3 py-2 max-w-[85%] whitespace-pre-wrap border-2 border-ink ${msg.role === "assistant" ? "bg-paper text-ink" : "bg-ink text-concrete"}`}>
-                  {msg.images && msg.images.length > 0 && (
-                    <div className="flex gap-1.5 flex-wrap mb-1.5">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
-                  )}
-                  {msg.text}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {canChat && (
         <div className={`border-t-4 p-3 flex-shrink-0 ${isWaiting ? "border-ink bg-[#b8860b]/15" : "border-ink bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
