@@ -7,14 +7,13 @@ import { fileURLToPath } from "node:url";
 import {
   listJobs, getJob, createJob, childrenOf, listProjects, getProject, createProject,
   updateProject, removeProject, removeJob, redoJob, appendPrompt, requeueJob, cancelEpic,
-  getTodayStats, getSetting, setSetting, type JobKind, type JobEffort, type JobStatus,
+  getTodayStats, getSetting, setSetting, approveDelegationPlan, type JobKind, type JobEffort, type JobStatus,
 } from "./db";
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
 import { readOutput, clearOutput } from "./output-log";
 import { scheduleDelegationCheck } from "./delegator-scheduler";
-import { runTerminalCommand, killTerminal } from "./terminal";
 import { getClaudeUsage } from "./usage";
 import { checkAuth, authEnabled } from "./auth";
 import { getUser, fetchUserRepos, createRepo } from "./agent/github";
@@ -294,6 +293,7 @@ export function startServer(port: number): http.Server {
           kind,
           model: String(b.model ?? ""),
           effort: (String(b.effort ?? "") || "") as JobEffort,
+          needsApproval: b.needsApproval === true, // guided create → clarify + plan gate
         });
         broadcast({ type: "job.created", job });
         if (wantsRun) enqueue(job.id);
@@ -334,6 +334,17 @@ export function startServer(port: number): http.Server {
           await updateStatus(id, "queued");
           enqueue(id);
           return sendJson(res, 200, await getJob(id));
+        }
+        if (method === "POST" && action === "approve-plan") {
+          // Guided-create approval gate: build the plan the user just reviewed.
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "not found" });
+          if (job.status !== "plan_review") return sendJson(res, 409, { error: "job is not awaiting plan approval" });
+          await approveDelegationPlan(id);
+          scheduleDelegationCheck();
+          const updated = await getJob(id);
+          if (updated) broadcast({ type: "job.updated", job: updated });
+          return sendJson(res, 200, updated);
         }
         if (method === "POST" && action === "requeue") {
           await requeueJob(id);
@@ -378,21 +389,7 @@ export function startServer(port: number): http.Server {
         }
       }
 
-      // ── Terminal ──
-      if (method === "POST" && pathname === "/api/terminal/exec") {
-        const b = await readBody(req);
-        const sessionId = String(b.sessionId ?? "");
-        const cwd = String(b.cwd ?? "");
-        const command = String(b.command ?? "");
-        if (!sessionId || !cwd || !command) return sendJson(res, 400, { error: "sessionId, cwd and command are required" });
-        runTerminalCommand(sessionId, cwd, command);
-        return sendJson(res, 202, { ok: true });
-      }
-      if (method === "POST" && pathname === "/api/terminal/kill") {
-        const b = await readBody(req);
-        const killed = killTerminal(String(b.sessionId ?? ""));
-        return sendJson(res, 200, { ok: true, killed });
-      }
+      // Terminal is now a PTY over the /term WebSocket (see events.ts + terminal.ts).
 
       if (method === "GET") return serveStatic(pathname, res);
       sendJson(res, 404, { error: "not found" });

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, Play } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, approvePlan } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -40,6 +40,7 @@ function lineClass(type: LineType): string {
 export function JobDetail({ jobId, onRedo }: Props) {
   const job = useJob(jobId);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const [promptDraft, setPromptDraft] = useState("");
   const [addingPrompt, setAddingPrompt] = useState(false);
@@ -47,17 +48,53 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   const isRunning = job?.status === "running";
   const isWaiting = job?.status === "waiting_for_input";
+  const isClarifying = job?.status === "clarifying";
+  const isPlanReview = job?.status === "plan_review";
   const isDelegating = job?.status === "delegating";
   const isEpic = job?.kind === "epic";
   const isPending = job?.status === "pending" || job?.status === "queued";
   const isFinished = job?.status === "completed" || job?.status === "failed" || job?.status === "cancelled";
-  const streamActive = isRunning || isWaiting || isDelegating;
+  const streamActive = isRunning || isWaiting || isClarifying || isDelegating;
 
   const output = useJobOutput(jobId, streamActive);
   const [messages, addMessage] = useJobChat(jobId, streamActive);
 
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [approving, setApproving] = useState(false);
+
+  async function handleApprove() {
+    if (approving) return;
+    setApproving(true);
+    try { await approvePlan(jobId); toast.success("Approved — agents are starting"); }
+    catch (err) { toast.error(String(err instanceof Error ? err.message : err) || "Could not approve"); }
+    finally { setApproving(false); }
+  }
+
+  const [activeTab, setActiveTab] = useState<"output" | "chat">("output");
+  const [unseenChat, setUnseenChat] = useState(false);
+  const [unseenOutput, setUnseenOutput] = useState(false);
+  const prevMessagesLen = useRef(messages.length);
+  const prevOutputLen2 = useRef(output.length);
+
+  useEffect(() => {
+    if (messages.length > prevMessagesLen.current && activeTab !== "chat") {
+      setUnseenChat(true);
+    }
+    prevMessagesLen.current = messages.length;
+  }, [messages.length, activeTab]);
+
+  useEffect(() => {
+    if (output.length > prevOutputLen2.current && activeTab !== "output") {
+      setUnseenOutput(true);
+    }
+    prevOutputLen2.current = output.length;
+  }, [output.length, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "chat") setUnseenChat(false);
+    if (activeTab === "output") setUnseenOutput(false);
+  }, [activeTab]);
 
   const [activeTab, setActiveTab] = useState<"output" | "chat">("output");
   const [unseenChat, setUnseenChat] = useState(false);
@@ -142,9 +179,12 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const lastToolLine = [...lines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
   const activeTool = isRunning && lastToolLine ? lastToolLine.slice(7) : null;
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [output, messages]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [output, messages]);
 
-  const canChat = !!job && !isPending;
+  const canChat = !!job && !isPending && !isPlanReview;
 
   async function handleRedo(e: React.FormEvent) {
     e.preventDefault();

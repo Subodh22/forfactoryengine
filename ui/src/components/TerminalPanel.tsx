@@ -1,137 +1,89 @@
+"use client";
 import { useEffect, useRef, useState } from "react";
-import { Terminal as TerminalIcon, Trash2, Square, CornerDownLeft } from "lucide-react";
-import { useFactory } from "@/lib/data";
-import { terminalExec, terminalKill } from "@/lib/mutations";
-
-const EXIT_MARK = "\x00exit\x00";
-const STDERR_MARK = "\x00stderr\x00";
-
-type Entry =
-  | { kind: "cmd"; text: string }
-  | { kind: "out"; text: string }
-  | { kind: "err"; text: string }
-  | { kind: "exit"; code: number }
-  | { kind: "info"; text: string };
-
-type TerminalProject = { name: string; localPath: string };
+import { Trash2 } from "lucide-react";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import "@xterm/xterm/css/xterm.css";
+import { termUrl } from "@/lib/api";
 
 /**
- * Non-interactive terminal: each command runs on the engine in the project's
- * localPath; stdout/stderr stream back over the engine WebSocket as term.output
- * events. Not a PTY, but enough for builds, git, npm, tests from the browser.
+ * A single interactive PTY rendered with xterm.js over a /term WebSocket. The PTY
+ * runs the user's shell in `cwd` and lives for as long as this component is
+ * mounted. `active` tells it when it's the visible tab so it can refit/refocus
+ * (xterm can't measure a hidden element). Chrome (tabs) lives in TerminalTabs.
  */
-export function TerminalPanel({ project }: { project: TerminalProject }) {
-  const { onTerm, live } = useFactory();
-  const [entries, setEntries] = useState<Entry[]>([{ kind: "info", text: `Connected to ${project.localPath}` }]);
-  const [input, setInput] = useState("");
-  const [running, setRunning] = useState(false);
-
-  const sessionIdRef = useRef<string>("");
-  if (!sessionIdRef.current) sessionIdRef.current = `term-${Math.random().toString(36).slice(2)}-${project.localPath.length}`;
-  const sessionId = sessionIdRef.current;
-
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const historyRef = useRef<string[]>([]);
-  const [histIdx, setHistIdx] = useState(-1);
+export function TerminalPanel({ cwd, active }: { cwd: string; active: boolean }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    return onTerm(sessionId, (text) => {
-      if (text.startsWith(EXIT_MARK)) {
-        const code = Number(text.slice(EXIT_MARK.length)) || 0;
-        setRunning(false);
-        setEntries((prev) => [...prev, { kind: "exit", code }]);
-        return;
-      }
-      if (text.startsWith(STDERR_MARK)) {
-        setEntries((prev) => [...prev, { kind: "err", text: text.slice(STDERR_MARK.length) }]);
-        return;
-      }
-      setEntries((prev) => [...prev, { kind: "out", text }]);
+    const container = containerRef.current;
+    if (!container) return;
+
+    const term = new Terminal({
+      cursorBlink: true,
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      fontSize: 13,
+      theme: { background: "#1a1714", foreground: "#cfe8cf", cursor: "#3bd16f" },
     });
-  }, [sessionId, onTerm]);
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.open(container);
+    try { fit.fit(); } catch { /* refit once laid out */ }
+    termRef.current = term;
+    fitRef.current = fit;
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [entries]);
+    const ws = new WebSocket(termUrl(cwd, term.cols, term.rows));
+    wsRef.current = ws;
+    ws.onopen = () => { setConnected(true); ws.send(JSON.stringify({ r: [term.cols, term.rows] })); term.focus(); };
+    ws.onclose = () => setConnected(false);
+    ws.onmessage = (e) => {
+      if (typeof e.data === "string") term.write(e.data);
+      else if (e.data instanceof Blob) e.data.text().then((t) => term.write(t)).catch(() => {});
+    };
 
-  async function run() {
-    const command = input.trim();
-    if (!command || running || !live) return;
-    if (command === "clear" || command === "cls") { setEntries([]); setInput(""); return; }
-    historyRef.current.push(command);
-    setHistIdx(-1);
-    setEntries((prev) => [...prev, { kind: "cmd", text: command }]);
-    setInput("");
-    setRunning(true);
-    try {
-      await terminalExec(sessionId, project.localPath, command);
-    } catch (err) {
-      setEntries((prev) => [...prev, { kind: "err", text: `${(err as Error).message}\n` }]);
-      setRunning(false);
-    }
-  }
+    const onData = term.onData((d) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ i: d })); });
 
-  async function kill() {
-    try { await terminalKill(sessionId); } catch { /* ignore */ }
-  }
+    const refit = () => {
+      try { fit.fit(); } catch { return; }
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ r: [term.cols, term.rows] }));
+    };
+    const ro = new ResizeObserver(refit);
+    ro.observe(container);
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") { e.preventDefault(); run(); return; }
-    if (e.key === "c" && e.ctrlKey && running) { e.preventDefault(); kill(); return; }
-    const hist = historyRef.current;
-    if (e.key === "ArrowUp" && hist.length) {
-      e.preventDefault();
-      const next = histIdx === -1 ? hist.length - 1 : Math.max(0, histIdx - 1);
-      setHistIdx(next); setInput(hist[next]);
-    }
-    if (e.key === "ArrowDown" && histIdx !== -1) {
-      e.preventDefault();
-      const next = histIdx + 1;
-      if (next >= hist.length) { setHistIdx(-1); setInput(""); }
-      else { setHistIdx(next); setInput(hist[next]); }
-    }
-  }
+    return () => {
+      ro.disconnect();
+      onData.dispose();
+      ws.close();
+      term.dispose();
+      termRef.current = null; fitRef.current = null; wsRef.current = null;
+    };
+  }, [cwd]);
+
+  // Refit + refocus when this terminal becomes the visible tab.
+  useEffect(() => {
+    if (!active) return;
+    const raf = requestAnimationFrame(() => {
+      const fit = fitRef.current, term = termRef.current, ws = wsRef.current;
+      if (!fit || !term) return;
+      try { fit.fit(); } catch { return; }
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ r: [term.cols, term.rows] }));
+      term.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
 
   return (
-    <div className="flex flex-col h-full max-w-[840px] mx-auto w-full bg-ink border-4 border-ink brutal-shadow-muted overflow-hidden text-[#cfe8cf]">
-      <div className="flex items-center gap-2 px-3 h-10 border-b-2 border-[#2a2722] flex-shrink-0">
-        <TerminalIcon className="w-3.5 h-3.5 text-[#3bd16f]" />
-        <span className="font-mono text-xs font-bold text-[#cfe8cf]">{project.name}</span>
-        <span className="font-mono text-[10px] text-[#6b8a6b] truncate max-w-[40%]" title={project.localPath}>{project.localPath}</span>
-        <span className={`ml-auto flex items-center gap-1 font-mono text-[10px] ${live ? "text-[#3bd16f]" : "text-[#6b8a6b]"}`}>
-          <span className={`w-1.5 h-1.5 ${live ? "bg-[#3bd16f]" : "bg-[#6b8a6b]"}`} />{live ? "connected" : "offline"}
+    <div className="flex flex-col h-full w-full">
+      <div ref={containerRef} className="flex-1 overflow-hidden p-2" style={{ backgroundColor: "#1a1714" }} />
+      <div className="flex items-center gap-2 px-3 h-7 border-t border-[#2a2722] flex-shrink-0 bg-ink">
+        <span className={`flex items-center gap-1 font-mono text-[10px] ${connected ? "text-[#3bd16f]" : "text-[#6b8a6b]"}`}>
+          <span className={`w-1.5 h-1.5 ${connected ? "bg-[#3bd16f]" : "bg-[#6b8a6b]"}`} />{connected ? "connected" : "offline"}
         </span>
-        {running && (
-          <button onClick={kill} className="flex items-center gap-1 px-2 py-0.5 font-mono text-[10px] text-[#ff8a7a] hover:text-white border border-[#d6210f] transition-colors" title="Stop (Ctrl+C)"><Square className="w-2.5 h-2.5" /> stop</button>
-        )}
-        <button onClick={() => setEntries([])} className="flex items-center gap-1 px-2 py-0.5 font-mono text-[10px] text-[#6b8a6b] hover:text-[#cfe8cf] border border-[#6b8a6b] transition-colors" title="Clear"><Trash2 className="w-2.5 h-2.5" /> clear</button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-3 font-mono text-[13px] leading-[1.7]" onClick={() => inputRef.current?.focus()}>
-        {entries.map((e, i) => {
-          if (e.kind === "cmd") return <div key={i} className="whitespace-pre-wrap break-words"><span className="text-[#3bd16f]">$ </span><span className="text-[#e7e4dc]">{e.text}</span></div>;
-          if (e.kind === "err") return <pre key={i} className="whitespace-pre-wrap break-words text-red-400 font-mono">{e.text}</pre>;
-          if (e.kind === "exit") return <div key={i} className={`text-[11px] ${e.code === 0 ? "text-[#6b8a6b]" : "text-red-500"}`}>[exit {e.code}]</div>;
-          if (e.kind === "info") return <div key={i} className="text-[11px] text-[#6b8a6b]">{e.text}</div>;
-          return <pre key={i} className="whitespace-pre-wrap break-words text-[#cfe8cf] font-mono">{e.text}</pre>;
-        })}
-        <div ref={bottomRef} />
-      </div>
-
-      <div className="flex items-center gap-2 px-4 h-11 border-t-2 border-[#2a2722] flex-shrink-0">
-        <span className="text-[#3bd16f] font-mono text-[13px]">$</span>
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          disabled={!live}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoComplete="off"
-          placeholder={live ? (running ? "running… (Ctrl+C to stop)" : "type a command and press Enter") : "connecting to engine…"}
-          className="flex-1 bg-transparent outline-none font-mono text-[13px] text-[#e7e4dc] placeholder:text-[#6b8a6b] disabled:opacity-50"
-        />
-        <button onClick={run} disabled={!live || running || !input.trim()} className="flex items-center gap-1 text-[#6b8a6b] hover:text-[#cfe8cf] disabled:opacity-30 transition-colors" title="Run (Enter)"><CornerDownLeft className="w-3.5 h-3.5" /></button>
+        <button onClick={() => termRef.current?.clear()} className="ml-auto flex items-center gap-1 px-2 py-0.5 font-mono text-[10px] text-[#6b8a6b] hover:text-[#cfe8cf] transition-colors" title="Clear"><Trash2 className="w-2.5 h-2.5" /> clear</button>
       </div>
     </div>
   );

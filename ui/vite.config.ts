@@ -15,6 +15,7 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:8787",
       "/ws": { target: "ws://localhost:8787", ws: true },
+      "/term": { target: "ws://localhost:8787", ws: true },
     },
   },
 });

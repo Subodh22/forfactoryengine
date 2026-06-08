@@ -13,7 +13,9 @@
   "dependencies": {
     "@libsql/client": "^0.14.0",
     "@octokit/rest": "^21.1.1",
-    "ws": "^8.18.0"
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

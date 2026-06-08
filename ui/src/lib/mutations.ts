@@ -14,6 +14,7 @@ export interface CreateJobInput {
   model?: string;
   effort?: string;
   autoRun?: boolean;
+  needsApproval?: boolean; // guided create: clarify + plan approval before building
 }
 
 export const createJob = (input: CreateJobInput) =>
@@ -37,6 +38,9 @@ export const removeJob = (id: string) => api(`/api/jobs/${id}`, { method: "DELET
 
 export const sendReply = (id: string, text: string, images: string[]) =>
   api(`/api/jobs/${id}/reply`, { method: "POST", body: JSON.stringify({ text, images }) });
+
+export const approvePlan = (id: string) =>
+  api<Job>(`/api/jobs/${id}/approve-plan`, { method: "POST" });
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 export interface CreateProjectInput {
@@ -90,9 +94,4 @@ export const getEnv = (localPath: string) =>
 export const saveEnv = (localPath: string, content: string) =>
   api("/api/projects/env", { method: "POST", body: JSON.stringify({ localPath, content }) });
 
-// ── Terminal ─────────────────────────────────────────────────────────────
-export const terminalExec = (sessionId: string, cwd: string, command: string) =>
-  api("/api/terminal/exec", { method: "POST", body: JSON.stringify({ sessionId, cwd, command }) });
-
-export const terminalKill = (sessionId: string) =>
-  api("/api/terminal/kill", { method: "POST", body: JSON.stringify({ sessionId }) });
+// Terminal is now an interactive PTY over the /term WebSocket (see TerminalPanel).

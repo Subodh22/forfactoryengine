@@ -15,6 +15,7 @@ import { buildRepoMap } from "./agent/repo-map";
 import { parseDataUrl, safeFilename } from "./attachments";
 import { sendJobNotification } from "./notify";
 import { planEpic } from "./delegator";
+import { startGuidedEpic, continueGuidedEpic, isGuided, reapGuided } from "./guided";
 import { scheduleDelegationCheck } from "./delegator-scheduler";
 
 // ── In-process queue ─────────────────────────────────────────────────────────
@@ -95,12 +96,21 @@ function log(jobId: string, msg: string) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Text-like MIME types whose content should be inlined directly into the prompt
+ *  so the agent sees them without needing to read from disk. */
+const INLINE_MIME_PREFIXES = ["text/", "application/json", "application/yaml", "application/xml"];
+function shouldInline(mime: string): boolean {
+  return INLINE_MIME_PREFIXES.some((p) => mime.startsWith(p));
+}
+
 /** Save base64 attachments to the worktree, return message text with their
- *  paths prepended so Claude can read them. */
+ *  paths prepended so Claude can read them. Text-based files are inlined
+ *  directly into the prompt so the agent doesn't need a separate Read call. */
 function buildMessageWithAttachments(text: string, attachments: string[], worktreePath: string): string {
   if (!attachments.length) return text;
   const images: string[] = [];
-  const files: string[] = [];
+  const inlined: { name: string; content: string }[] = [];
+  const binaryFiles: string[] = [];
   for (const dataUrl of attachments) {
     const parsed = parseDataUrl(dataUrl);
     if (!parsed) continue;
@@ -109,13 +119,24 @@ function buildMessageWithAttachments(text: string, attachments: string[], worktr
     const unique = `_factory_${Date.now()}_${Math.random().toString(36).slice(2)}_${name}`;
     const dest = path.join(worktreePath, unique);
     fs.writeFileSync(dest, Buffer.from(parsed.base64, "base64"));
-    (parsed.isImage ? images : files).push(dest);
+
+    if (parsed.isImage) {
+      images.push(dest);
+    } else if (shouldInline(parsed.mime)) {
+      const content = Buffer.from(parsed.base64, "base64").toString("utf8");
+      inlined.push({ name: parsed.name || name, content });
+    } else {
+      binaryFiles.push(dest);
+    }
   }
   const refs: string[] = [];
   images.forEach((p, i) => refs.push(`Image ${i + 1}: ${p}`));
-  files.forEach((p, i) => refs.push(`File ${i + 1}: ${p}`));
+  binaryFiles.forEach((p, i) => refs.push(`File ${i + 1}: ${p}`));
+  for (const { name, content } of inlined) {
+    refs.push(`<attached_file name="${name}">\n${content}\n</attached_file>`);
+  }
   if (!refs.length) return text;
-  return `${refs.join("\n")}\n\n${text}`;
+  return `${refs.join("\n\n")}\n\n${text}`;
 }
 
 /** Copy the project's .env into a worktree so agents see the same env vars the
@@ -187,8 +208,12 @@ export async function startJob(jobId: string): Promise<void> {
     // -- Epic: plan & split, then hand to the scheduler ----------------------
     if (job.kind === "epic") {
       if (!job.delegatorPlan) {
-        await planEpic(job, project);
-        scheduleDelegationCheck();
+        if (job.needsApproval) {
+          await startGuidedEpic(job, project);   // guided: clarify → stack → plan_review
+        } else {
+          await planEpic(job, project);          // express: foundation-first, auto-build
+          scheduleDelegationCheck();
+        }
       }
       processing.delete(jobId);
       return;
@@ -423,6 +448,7 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
 
 export function cancelJob(jobId: string): void {
   if (processing.has(jobId)) cancelledJobs.add(jobId);
+  reapGuided(jobId);
   cleanupSession(jobId);
   processing.delete(jobId);
   const i = queue.indexOf(jobId);
@@ -438,6 +464,7 @@ export function getActiveJobIds(): string[] {
 /** Entry point for a user reply (POST /api/reply/:jobId). Returns true if the
  *  reply was accepted (a live session exists, or a finished job can be resumed). */
 export async function deliverReply(jobId: string, text: string, images: string[]): Promise<boolean> {
+  if (isGuided(jobId)) return continueGuidedEpic(jobId, text); // guided discovery owns its replies
   const ctx = liveContext.get(jobId);
   if (ctx && activeSessions.has(jobId)) {
     ctx.queue.push({ text, images });
