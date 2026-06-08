@@ -28,8 +28,7 @@ export function CreateProject({ onCreated }: Props) {
   const slug = slugify(name);
   const canSubmit = !!slug && !!description.trim() && !busy;
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(mode: "guided" | "express") {
     if (!ghLogin) { toast.error("Connect GitHub first"); return; }
     if (!slug) { toast.error("Enter a project name"); return; }
     if (!description.trim()) { toast.error("Describe what you want to build"); return; }
@@ -48,17 +47,21 @@ export function CreateProject({ onCreated }: Props) {
         try { await seedClaudeMd(data.localPath, name.trim(), "", agentRules); } catch { /* ignore */ }
       }
 
-      setBusy("Starting build…");
-      const prompt = [
-        "Build the following project from scratch in this repository (it is currently empty apart from a README):",
-        "",
-        description.trim(),
-        "",
-        "Choose an appropriate tech stack and project structure, scaffold the app, implement an initial working version, and commit your work.",
-      ].join("\n");
-      const job = await createJob({ projectId: project.id, title: `Build: ${name.trim()}`.slice(0, 80), prompt, autoRun: true });
+      // Both modes build as a foundation-first epic. Guided clarifies + proposes a
+      // stack and waits for "Approve & Build"; express plans and builds immediately.
+      setBusy(mode === "guided" ? "Starting discovery…" : "Planning the build…");
+      const job = await createJob({
+        projectId: project.id,
+        title: `Build: ${name.trim()}`.slice(0, 80),
+        prompt: description.trim(),
+        kind: "epic",
+        autoRun: true,
+        needsApproval: mode === "guided",
+      });
 
-      toast.success("Repo created — building now");
+      toast.success(mode === "guided"
+        ? "Created — answer a few questions to shape the build"
+        : "Created — planning and building now");
       setName("");
       setDescription("");
       onCreated(project.id, job.id);
@@ -77,14 +80,14 @@ export function CreateProject({ onCreated }: Props) {
           <h2 className="font-display uppercase text-[15px] text-ink">Create a new project</h2>
         </div>
         <p className="font-data text-[11px] uppercase text-muted -mt-2">
-          Describe what you want to build. Factory creates a fresh GitHub repo, adds it here, and an agent starts building it right away.
+          Describe what you want to build. Factory creates a fresh GitHub repo, then asks a few questions, proposes the best stack, and builds it once you approve the plan. Use ⚡ Express to skip straight to building.
         </p>
 
         {!ghLogin && (
           <p className="font-data text-[11px] uppercase text-ink bg-[#b8860b]/20 border-2 border-ink px-3 py-2">Connect GitHub (top right) to create repos.</p>
         )}
 
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        <form onSubmit={(e) => { e.preventDefault(); submit("guided"); }} className="flex flex-col gap-4">
           <div>
             <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Project Name</label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My App" />
@@ -123,13 +126,18 @@ export function CreateProject({ onCreated }: Props) {
             </div>
           </div>
 
-          <Button type="submit" disabled={!canSubmit} className="mt-1 brutal-press">
-            {busy ? (
-              <span className="flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />{busy}</span>
-            ) : (
-              <span className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5" />Create &amp; Build</span>
-            )}
-          </Button>
+          <div className="flex gap-2 mt-1">
+            <Button type="submit" disabled={!canSubmit} className="brutal-press flex-1">
+              {busy ? (
+                <span className="flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />{busy}</span>
+              ) : (
+                <span className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5" />Create &amp; Plan</span>
+              )}
+            </Button>
+            <button type="button" onClick={() => submit("express")} disabled={!canSubmit} title="Skip the questions — plan and build immediately" className="font-data text-[12px] uppercase border-2 border-ink px-3 py-2 bg-concrete text-ink hover:bg-ink hover:text-concrete transition-colors disabled:opacity-40 flex items-center gap-1.5">
+              ⚡ Express
+            </button>
+          </div>
         </form>
       </div>
     </div>
