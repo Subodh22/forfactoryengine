@@ -14,6 +14,7 @@ export interface CreateJobInput {
   model?: string;
   effort?: string;
   autoRun?: boolean;
+  needsApproval?: boolean; // guided create: clarify + plan approval before building
 }
 
 export const createJob = (input: CreateJobInput) =>
@@ -37,6 +38,9 @@ export const removeJob = (id: string) => api(`/api/jobs/${id}`, { method: "DELET
 
 export const sendReply = (id: string, text: string, images: string[]) =>
   api(`/api/jobs/${id}/reply`, { method: "POST", body: JSON.stringify({ text, images }) });
+
+export const approvePlan = (id: string) =>
+  api<Job>(`/api/jobs/${id}/approve-plan`, { method: "POST" });
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 export interface CreateProjectInput {

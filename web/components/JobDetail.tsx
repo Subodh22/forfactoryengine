@@ -1,12 +1,12 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, Play } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, approvePlan } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -48,17 +48,28 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   const isRunning = job?.status === "running";
   const isWaiting = job?.status === "waiting_for_input";
+  const isClarifying = job?.status === "clarifying";
+  const isPlanReview = job?.status === "plan_review";
   const isDelegating = job?.status === "delegating";
   const isEpic = job?.kind === "epic";
   const isPending = job?.status === "pending" || job?.status === "queued";
   const isFinished = job?.status === "completed" || job?.status === "failed" || job?.status === "cancelled";
-  const streamActive = isRunning || isWaiting || isDelegating;
+  const streamActive = isRunning || isWaiting || isClarifying || isDelegating;
 
   const output = useJobOutput(jobId, streamActive);
   const [messages, addMessage] = useJobChat(jobId, streamActive);
 
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [approving, setApproving] = useState(false);
+
+  async function handleApprove() {
+    if (approving) return;
+    setApproving(true);
+    try { await approvePlan(jobId); toast.success("Approved — agents are starting"); }
+    catch (err) { toast.error(String(err instanceof Error ? err.message : err) || "Could not approve"); }
+    finally { setApproving(false); }
+  }
 
   const [redoOpen, setRedoOpen] = useState(false);
   const [redoPrompt, setRedoPrompt] = useState("");
@@ -120,7 +131,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [output, messages]);
 
-  const canChat = !!job && !isPending;
+  const canChat = !!job && !isPending && !isPlanReview;
 
   async function handleRedo(e: React.FormEvent) {
     e.preventDefault();
@@ -306,6 +317,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
         <div className={`border-t-4 p-3 flex-shrink-0 ${isWaiting ? "border-ink bg-[#b8860b]/15" : "border-ink bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
           {isPending && <p className="font-data text-[10px] uppercase text-muted mb-2">Add instructions or images before this job runs</p>}
           {isWaiting && <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">Claude has a question — reply to continue</p>}
+          {isClarifying && <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">Answer Claude&apos;s questions to continue</p>}
           {isDelegating && <p className="font-data text-[10px] uppercase text-muted mb-2">Talk to Claude about this epic — opens a session in the integration branch</p>}
           {isRunning && <p className="font-data text-[10px] uppercase text-muted mb-2">Message will be delivered when Claude finishes this turn</p>}
           {isFinished && <p className="font-data text-[10px] uppercase text-muted mb-2">Continue the conversation — resumes this job&apos;s session</p>}
@@ -316,9 +328,18 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
-            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={isPending ? "Add to prompt… (paste screenshots)" : isWaiting ? "Reply to Claude… (paste screenshots)" : isRunning ? "Queue a message… (paste screenshots)" : "Message Claude… (paste screenshots)"} onPaste={onPaste} className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow" autoFocus={isWaiting} />
+            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={isPending ? "Add to prompt… (paste screenshots)" : isWaiting || isClarifying ? "Reply to Claude… (paste screenshots)" : isRunning ? "Queue a message… (paste screenshots)" : "Message Claude… (paste screenshots)"} onPaste={onPaste} className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow" autoFocus={isWaiting || isClarifying} />
             <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-3 py-2 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><Send className="w-3 h-3" />{sending ? "…" : "Send"}</button>
           </form>
+        </div>
+      )}
+
+      {isPlanReview && (
+        <div className="border-t-4 border-[#b8860b] bg-[#b8860b]/15 p-3 flex-shrink-0 flex items-center gap-3">
+          <p className="font-data text-[10px] uppercase text-[#b8860b] font-bold flex-1">Review the plan above, then build</p>
+          <button onClick={handleApprove} disabled={approving} className="px-4 py-2 bg-ink text-concrete border-2 border-ink font-data text-[11px] uppercase flex items-center gap-1.5 brutal-press disabled:opacity-40">
+            <Play className="w-3 h-3" />{approving ? "Starting…" : "Approve & Build"}
+          </button>
         </div>
       )}
 

@@ -9,6 +9,8 @@ const config = {
   failed: { label: "Failed", className: "border-[#d6210f] text-[#d6210f]" },
   cancelled: { label: "Cancelled", className: "border-muted text-muted" },
   waiting_for_input: { label: "Needs Reply", className: "bg-ink text-concrete border-ink animate-pulse" },
+  clarifying: { label: "Clarifying", className: "bg-ink text-concrete border-ink animate-pulse" },
+  plan_review: { label: "Review Plan", className: "border-[#b8860b] text-[#b8860b]" },
   delegating: { label: "Delegating", className: "bg-ink text-concrete border-ink animate-pulse" },
 };
 

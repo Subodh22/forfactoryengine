@@ -6,6 +6,8 @@ export type JobStatus =
   | "failed"
   | "cancelled"
   | "waiting_for_input"
+  | "clarifying"
+  | "plan_review"
   | "delegating";
 
 export interface Project {
@@ -40,6 +42,7 @@ export interface Job {
   error: string;
   sessionId: string;
   delegatorPlan: string;
+  needsApproval: boolean;
   model: string;
   effort: "low" | "medium" | "high" | "max" | "";
   inputTokens: number;
