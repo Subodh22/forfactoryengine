@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   listJobs, getJob, createJob, childrenOf, listProjects, getProject, createProject,
   updateProject, removeProject, removeJob, redoJob, appendPrompt, requeueJob, cancelEpic,
-  getTodayStats, getSetting, setSetting, type JobKind, type JobEffort, type JobStatus,
+  getTodayStats, getSetting, setSetting, approveDelegationPlan, type JobKind, type JobEffort, type JobStatus,
 } from "./db";
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
@@ -333,6 +333,17 @@ export function startServer(port: number): http.Server {
           await updateStatus(id, "queued");
           enqueue(id);
           return sendJson(res, 200, await getJob(id));
+        }
+        if (method === "POST" && action === "approve-plan") {
+          // Guided-create approval gate: build the plan the user just reviewed.
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "not found" });
+          if (job.status !== "plan_review") return sendJson(res, 409, { error: "job is not awaiting plan approval" });
+          await approveDelegationPlan(id);
+          scheduleDelegationCheck();
+          const updated = await getJob(id);
+          if (updated) broadcast({ type: "job.updated", job: updated });
+          return sendJson(res, 200, updated);
         }
         if (method === "POST" && action === "requeue") {
           await requeueJob(id);
