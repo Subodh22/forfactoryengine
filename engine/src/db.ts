@@ -42,6 +42,8 @@ export type JobStatus =
   | "failed"
   | "cancelled"
   | "waiting_for_input"
+  | "clarifying"    // guided create: agent is asking the user questions
+  | "plan_review"   // epic planned; awaiting the user's "Approve & Build"
   | "delegating";
 
 export type JobKind = "epic" | "task" | "";
@@ -66,6 +68,7 @@ export interface Job {
   error: string;
   sessionId: string;
   delegatorPlan: string;
+  needsApproval: boolean;
   model: string;
   effort: JobEffort;
   inputTokens: number;
@@ -113,6 +116,7 @@ export async function initSchema(): Promise<void> {
       error          TEXT NOT NULL DEFAULT '',
       session_id     TEXT NOT NULL DEFAULT '',
       delegator_plan TEXT NOT NULL DEFAULT '',
+      needs_approval INTEGER NOT NULL DEFAULT 0,
       model          TEXT NOT NULL DEFAULT '',
       effort         TEXT NOT NULL DEFAULT '',
       input_tokens   INTEGER NOT NULL DEFAULT 0,
@@ -144,6 +148,7 @@ export async function initSchema(): Promise<void> {
     ["pr_number", "INTEGER NOT NULL DEFAULT 0"],
     ["session_id", "TEXT NOT NULL DEFAULT ''"],
     ["delegator_plan", "TEXT NOT NULL DEFAULT ''"],
+    ["needs_approval", "INTEGER NOT NULL DEFAULT 0"],
     ["model", "TEXT NOT NULL DEFAULT ''"],
     ["effort", "TEXT NOT NULL DEFAULT ''"],
     ["input_tokens", "INTEGER NOT NULL DEFAULT 0"],
@@ -295,6 +300,7 @@ function rowToJob(r: Row): Job {
     error: String(r.error ?? ""),
     sessionId: String(r.session_id ?? ""),
     delegatorPlan: String(r.delegator_plan ?? ""),
+    needsApproval: Boolean(Number(r.needs_approval ?? 0)),
     model: String(r.model ?? ""),
     effort: String(r.effort ?? "") as JobEffort,
     inputTokens: Number(r.input_tokens ?? 0),
@@ -332,7 +338,7 @@ export async function createJob(input: {
   projectId: string; title: string; prompt: string;
   images?: string[]; status?: JobStatus; kind?: JobKind; parentJobId?: string;
   priority?: number; touchedPaths?: string[]; blockedBy?: string[];
-  model?: string; effort?: JobEffort;
+  model?: string; effort?: JobEffort; needsApproval?: boolean;
 }): Promise<Job> {
   const job: Job = {
     id: crypto.randomUUID(),
@@ -353,6 +359,7 @@ export async function createJob(input: {
     error: "",
     sessionId: "",
     delegatorPlan: "",
+    needsApproval: input.needsApproval ?? false,
     model: input.model ?? "",
     effort: input.effort ?? "",
     inputTokens: 0,
@@ -363,12 +370,12 @@ export async function createJob(input: {
     createdAt: Date.now(),
   };
   await db.execute({
-    sql: `INSERT INTO jobs (id, project_id, title, prompt, images, status, kind, parent_job_id, priority, touched_paths, blocked_by, model, effort, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO jobs (id, project_id, title, prompt, images, status, kind, parent_job_id, priority, touched_paths, blocked_by, model, effort, needs_approval, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       job.id, job.projectId, job.title, job.prompt, JSON.stringify(job.images), job.status,
       job.kind, job.parentJobId, job.priority, JSON.stringify(job.touchedPaths),
-      JSON.stringify(job.blockedBy), job.model, job.effort, job.createdAt,
+      JSON.stringify(job.blockedBy), job.model, job.effort, job.needsApproval ? 1 : 0, job.createdAt,
     ],
   });
   return job;
@@ -504,8 +511,18 @@ export async function createChildren(epicId: string, subtasks: SubtaskInput[]): 
   return inserted;
 }
 
-export async function setDelegatorPlan(id: string, delegatorPlan: string, branch: string): Promise<void> {
-  await patchJob(id, { delegatorPlan, branch, status: "delegating" });
+/** Stage a planned epic. `status` is "plan_review" when the epic opted into the
+ *  approval gate (guided create), or "delegating" to build immediately. */
+export async function setDelegatorPlan(
+  id: string, delegatorPlan: string, branch: string,
+  status: Extract<JobStatus, "plan_review" | "delegating"> = "delegating",
+): Promise<void> {
+  await patchJob(id, { delegatorPlan, branch, status });
+}
+
+/** Approve a plan_review epic so the scheduler starts building its subtasks. */
+export async function approveDelegationPlan(id: string): Promise<void> {
+  await patchJob(id, { status: "delegating" });
 }
 
 export interface EpicState { epic: Job; children: Job[] }
