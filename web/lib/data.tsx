@@ -84,25 +84,37 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
     api<{ login: string; oauthConfigured: boolean }>("/api/github/status")
       .then((s) => { setGhLogin(s.login); setGhOAuth(s.oauthConfigured); }).catch(() => {});
 
-    const ws = new WebSocket(wsUrl());
-    ws.onopen = () => setLive(true);
-    ws.onclose = () => setLive(false);
-    ws.onmessage = (e) => {
-      let ev: ServerEvent;
-      try { ev = JSON.parse(e.data) as ServerEvent; } catch { return; }
-      switch (ev.type) {
-        case "project.created": setProjects((p) => [ev.project, ...p.filter((x) => x.id !== ev.project.id)]); break;
-        case "project.updated": setProjects((p) => p.map((x) => (x.id === ev.project.id ? ev.project : x))); break;
-        case "project.removed": setProjects((p) => p.filter((x) => x.id !== ev.id)); break;
-        case "job.created": setJobs((j) => (j.some((x) => x.id === ev.job.id) ? j : [ev.job, ...j])); break;
-        case "job.updated": setJobs((j) => (j.some((x) => x.id === ev.job.id) ? j.map((x) => (x.id === ev.job.id ? ev.job : x)) : [ev.job, ...j])); break;
-        case "job.removed": setJobs((j) => j.filter((x) => x.id !== ev.id)); break;
-        case "job.output": fire(outputListeners.current, ev.jobId, ev.chunk); break;
-        case "job.chat": fire<ChatMsg>(chatListeners.current, ev.jobId, { id: `${Date.now()}-${Math.random()}`, role: ev.role, text: ev.text, images: ev.images }); break;
-        case "term.output": fire(termListeners.current, ev.sessionId, ev.text); break;
-      }
-    };
-    return () => ws.close();
+    let ws: WebSocket | null = null;
+    let retryDelay = 1000;
+    let dead = false;
+
+    function connect() {
+      if (dead) return;
+      ws = new WebSocket(wsUrl());
+      ws.onopen = () => { setLive(true); retryDelay = 1000; };
+      ws.onclose = () => {
+        setLive(false);
+        if (!dead) setTimeout(connect, Math.min(retryDelay, 30000));
+        retryDelay = Math.min(retryDelay * 2, 30000);
+      };
+      ws.onmessage = (e) => {
+        let ev: ServerEvent;
+        try { ev = JSON.parse(e.data) as ServerEvent; } catch { return; }
+        switch (ev.type) {
+          case "project.created": setProjects((p) => [ev.project, ...p.filter((x) => x.id !== ev.project.id)]); break;
+          case "project.updated": setProjects((p) => p.map((x) => (x.id === ev.project.id ? ev.project : x))); break;
+          case "project.removed": setProjects((p) => p.filter((x) => x.id !== ev.id)); break;
+          case "job.created": setJobs((j) => (j.some((x) => x.id === ev.job.id) ? j : [ev.job, ...j])); break;
+          case "job.updated": setJobs((j) => (j.some((x) => x.id === ev.job.id) ? j.map((x) => (x.id === ev.job.id ? ev.job : x)) : [ev.job, ...j])); break;
+          case "job.removed": setJobs((j) => j.filter((x) => x.id !== ev.id)); break;
+          case "job.output": fire(outputListeners.current, ev.jobId, ev.chunk); break;
+          case "job.chat": fire<ChatMsg>(chatListeners.current, ev.jobId, { id: `${Date.now()}-${Math.random()}`, role: ev.role, text: ev.text, images: ev.images }); break;
+          case "term.output": fire(termListeners.current, ev.sessionId, ev.text); break;
+        }
+      };
+    }
+    connect();
+    return () => { dead = true; ws?.close(); };
   }, [ready]);
 
   const value = useMemo<FactoryCtx>(() => ({
