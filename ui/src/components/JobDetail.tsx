@@ -119,7 +119,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [output, messages]);
 
-  const canChat = !!job && !isPending && !isEpic;
+  const canChat = !!job && !isPending;
 
   async function handleRedo(e: React.FormEvent) {
     e.preventDefault();
