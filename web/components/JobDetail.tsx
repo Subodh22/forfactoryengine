@@ -97,31 +97,6 @@ export function JobDetail({ jobId, onRedo }: Props) {
     if (activeTab === "output") setUnseenOutput(false);
   }, [activeTab]);
 
-  const [activeTab, setActiveTab] = useState<"output" | "chat">("output");
-  const [unseenChat, setUnseenChat] = useState(false);
-  const [unseenOutput, setUnseenOutput] = useState(false);
-  const prevMessagesLen = useRef(messages.length);
-  const prevOutputLen2 = useRef(output.length);
-
-  useEffect(() => {
-    if (messages.length > prevMessagesLen.current && activeTab !== "chat") {
-      setUnseenChat(true);
-    }
-    prevMessagesLen.current = messages.length;
-  }, [messages.length, activeTab]);
-
-  useEffect(() => {
-    if (output.length > prevOutputLen2.current && activeTab !== "output") {
-      setUnseenOutput(true);
-    }
-    prevOutputLen2.current = output.length;
-  }, [output.length, activeTab]);
-
-  useEffect(() => {
-    if (activeTab === "chat") setUnseenChat(false);
-    if (activeTab === "output") setUnseenOutput(false);
-  }, [activeTab]);
-
   const [redoOpen, setRedoOpen] = useState(false);
   const [redoPrompt, setRedoPrompt] = useState("");
   const [redoImages, setRedoImages] = useState<string[]>([]);
