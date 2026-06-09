@@ -45,6 +45,7 @@ export interface Job {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  mergedToMain: boolean;
   startedAt: number;
   completedAt: number;
   createdAt: number;

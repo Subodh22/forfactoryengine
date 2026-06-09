@@ -114,7 +114,7 @@ async function finalizeEpic(epic: Job): Promise<void> {
     } else {
       log(epic.id, `No GitHub token — pushing ${branch} to ${project.defaultBranch}...`);
       pushBranchToDefault(worktreePath, project.defaultBranch);
-      await updateStatus(epic.id, "completed");
+      await updateStatus(epic.id, "completed", { mergedToMain: true });
       log(epic.id, `Merged epic to ${project.defaultBranch}.`);
     }
     await sendJobNotification({ jobId: epic.id, title: epic.title, status: "completed", projectName: project.name }).catch(() => {});
