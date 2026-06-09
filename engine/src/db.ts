@@ -78,6 +78,7 @@ export interface Job {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  mergedToMain: boolean;
   startedAt: number;
   completedAt: number;
   createdAt: number;
@@ -158,6 +159,7 @@ export async function initSchema(): Promise<void> {
     ["input_tokens", "INTEGER NOT NULL DEFAULT 0"],
     ["output_tokens", "INTEGER NOT NULL DEFAULT 0"],
     ["cost_usd", "REAL NOT NULL DEFAULT 0"],
+    ["merged_to_main", "INTEGER NOT NULL DEFAULT 0"],
     ["started_at", "INTEGER NOT NULL DEFAULT 0"],
     ["completed_at", "INTEGER NOT NULL DEFAULT 0"],
     ["assignee", "TEXT NOT NULL DEFAULT ''"],
@@ -312,6 +314,7 @@ function rowToJob(r: Row): Job {
     inputTokens: Number(r.input_tokens ?? 0),
     outputTokens: Number(r.output_tokens ?? 0),
     costUsd: Number(r.cost_usd ?? 0),
+    mergedToMain: Boolean(Number(r.merged_to_main ?? 0)),
     startedAt: Number(r.started_at ?? 0),
     completedAt: Number(r.completed_at ?? 0),
     createdAt: Number(r.created_at),
@@ -373,6 +376,7 @@ export async function createJob(input: {
     inputTokens: 0,
     outputTokens: 0,
     costUsd: 0,
+    mergedToMain: false,
     startedAt: 0,
     completedAt: 0,
     createdAt: Date.now(),
@@ -396,6 +400,7 @@ const JOB_COLUMNS: Record<string, string> = {
   delegatorPlan: "delegator_plan", priority: "priority", parentJobId: "parent_job_id",
   startedAt: "started_at", completedAt: "completed_at", inputTokens: "input_tokens",
   outputTokens: "output_tokens", costUsd: "cost_usd", assignee: "assignee",
+  mergedToMain: "merged_to_main",
 };
 const JOB_JSON_COLUMNS: Record<string, string> = {
   images: "images", touchedPaths: "touched_paths", blockedBy: "blocked_by",
@@ -417,7 +422,7 @@ export async function patchJob(
     const col = JOB_COLUMNS[k];
     if (!col) continue;
     sets.push(`${col} = ?`);
-    args.push(v as string | number);
+    args.push(typeof v === "boolean" ? (v ? 1 : 0) : v as string | number);
   }
   if (!sets.length) return;
   args.push(id);
@@ -488,7 +493,7 @@ export async function appendPrompt(id: string, text: string, images?: string[]):
 // Reset a job back to queued, clearing per-run state (used by retry/requeue).
 export async function requeueJob(id: string): Promise<void> {
   await patchJob(id, {
-    status: "queued", error: "", prUrl: "", prNumber: 0, startedAt: 0, completedAt: 0,
+    status: "queued", error: "", prUrl: "", prNumber: 0, mergedToMain: false, startedAt: 0, completedAt: 0,
   });
 }
 
