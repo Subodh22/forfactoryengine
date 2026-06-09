@@ -109,7 +109,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
       </div>
 
       {mode === "plan" ? (
-        <PlanBuilder projectId={projectId} onCreated={onJobCreated} />
+        <PlanBuilder projectId={projectId} />
       ) : (
       <div className="bg-paper border-4 border-ink brutal-shadow grid-bg">
         <div className="flex justify-between items-center px-5 py-4 border-b-4 border-ink bg-paper">

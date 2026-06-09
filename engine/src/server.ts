@@ -5,7 +5,7 @@ import os from "node:os";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  listJobs, getJob, createJob, patchJob, childrenOf, descendantsOf, createSubtree, MANUAL_PLAN_MARKER,
+  listJobs, getJob, createJob, patchJob, childrenOf, descendantsOf, createSubtree, MANUAL_PLAN_MARKER, isManualEpic,
   listProjects, getProject, createProject,
   updateProject, removeProject, removeJob, redoJob, appendPrompt, requeueJob, cancelEpic,
   getTodayStats, getSetting, setSetting, approveDelegationPlan,
@@ -15,7 +15,7 @@ import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
 import { readOutput, clearOutput } from "./output-log";
-import { scheduleDelegationCheck } from "./delegator-scheduler";
+import { scheduleDelegationCheck, finalizeEpic } from "./delegator-scheduler";
 import { getClaudeUsage } from "./usage";
 import { checkAuth, authEnabled } from "./auth";
 import { getUser, fetchUserRepos, createRepo } from "./agent/github";
@@ -342,18 +342,51 @@ export function startServer(port: number): http.Server {
           return sendJson(res, 200, { output: readOutput(id) });
         }
         if (method === "PATCH" && !action) {
-          // In-place edits to a plan task: rename, re-prompt, or reassign.
+          // In-place edits to a plan task: rename, re-prompt, reassign, or
+          // restructure (re-parent / reorder for the live ClickUp-style list).
           const b = await readBody(req);
           const fields: Partial<Job> = {};
           if (typeof b.title === "string") fields.title = b.title.trim().slice(0, 80);
           if (typeof b.prompt === "string") fields.prompt = b.prompt;
           if (typeof b.assignee === "string") fields.assignee = b.assignee as JobAssignee;
+          if (typeof b.priority === "number" && Number.isFinite(b.priority)) fields.priority = b.priority;
+          if (typeof b.parentJobId === "string") {
+            // Re-parent (indent / outdent). Guard against self-parenting,
+            // cycles, and moving a task that's mid-flight.
+            const target = await getJob(id);
+            if (!target) return sendJson(res, 404, { error: "not found" });
+            if (b.parentJobId === id) return sendJson(res, 400, { error: "cannot parent a task to itself" });
+            if (target.status === "running" || target.status === "queued") {
+              return sendJson(res, 409, { error: "cannot move a task while it is running" });
+            }
+            // Walk up from the proposed parent; if we reach this task, the move
+            // would make it a descendant of its own subtree (a cycle).
+            let cursor: Job | null = await getJob(b.parentJobId);
+            const seen = new Set<string>();
+            while (cursor && !seen.has(cursor.id)) {
+              if (cursor.id === id) return sendJson(res, 409, { error: "would create a cycle" });
+              seen.add(cursor.id);
+              cursor = cursor.parentJobId ? await getJob(cursor.parentJobId) : null;
+            }
+            fields.parentJobId = b.parentJobId;
+          }
           await patchJob(id, fields);
           const job = await getJob(id);
           if (job) broadcast({ type: "job.updated", job });
+          scheduleDelegationCheck();
           return sendJson(res, 200, job);
         }
         if (method === "DELETE" && !action) {
+          // ?cascade=1 removes the whole subtree (leaf-first) so deleting a
+          // parent task can't orphan its children — there's no DB cascade.
+          if (url.searchParams.get("cascade") === "1") {
+            const subtree = await descendantsOf(id);
+            for (const d of [...subtree].reverse()) {
+              await removeJob(d.id);
+              clearOutput(d.id);
+              broadcast({ type: "job.removed", id: d.id });
+            }
+          }
           await removeJob(id);
           clearOutput(id);
           broadcast({ type: "job.removed", id });
@@ -372,6 +405,15 @@ export function startServer(port: number): http.Server {
         if (method === "POST" && action === "queue") {
           await updateStatus(id, "queued");
           enqueue(id);
+          return sendJson(res, 200, await getJob(id));
+        }
+        if (method === "POST" && action === "finish") {
+          // Explicit finalize for a hand-authored (manual) plan. Completed agent
+          // work is pushed (PR / merge); a pure human checklist just marks done.
+          const epic = await getJob(id);
+          if (!epic) return sendJson(res, 404, { error: "not found" });
+          if (!isManualEpic(epic)) return sendJson(res, 400, { error: "not a manual plan" });
+          await finalizeEpic(epic);
           return sendJson(res, 200, await getJob(id));
         }
         if (method === "POST" && action === "approve-plan") {

@@ -28,24 +28,45 @@ export const createJob = (input: CreateJobInput) =>
 export interface PlanNode {
   localId: string;
   parentLocalId?: string;
+  parentJobId?: string;
   title: string;
   prompt?: string;
   assignee?: JobAssignee;
   dependsOn?: string[];
+  priority?: number;
 }
 
 export const createChildren = (epicId: string, nodes: PlanNode[]) =>
   api<Job[]>(`/api/jobs/${epicId}/children`, { method: "POST", body: JSON.stringify({ nodes }) });
 
+// Add a single task live to a plan and return the created job.
+export const addTask = (epicId: string, node: PlanNode) =>
+  createChildren(epicId, [node]).then((jobs) => jobs[0]);
+
 // Tick a manual task off (or reopen it).
 export const setTaskDone = (id: string, done: boolean) =>
   setJobStatus(id, done ? "completed" : "pending");
 
-// Edit a task in place — reassign between Claude/you, rename, or re-prompt.
-export const patchJob = (id: string, fields: { title?: string; prompt?: string; assignee?: JobAssignee }) =>
-  api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(fields) });
+// Edit a task in place — reassign between Claude/you, rename, re-prompt, or
+// restructure (re-parent for indent/outdent, reorder via priority).
+export const patchJob = (
+  id: string,
+  fields: { title?: string; prompt?: string; assignee?: JobAssignee; parentJobId?: string; priority?: number },
+) => api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(fields) });
 
 export const setAssignee = (id: string, assignee: JobAssignee) => patchJob(id, { assignee });
+
+// Indent/outdent: move a task under a new parent at a given sort position.
+export const reparentTask = (id: string, parentJobId: string, priority: number) =>
+  patchJob(id, { parentJobId, priority });
+
+// Reorder a task within its sibling group.
+export const reorderTask = (id: string, priority: number) => patchJob(id, { priority });
+
+// Finalize a manual plan: push completed agent work (PR/merge) or mark a pure
+// human checklist done. Plans never auto-finalize — this is explicit.
+export const finishPlan = (id: string) =>
+  api<Job>(`/api/jobs/${id}/finish`, { method: "POST" });
 
 export const setJobStatus = (id: string, status: JobStatus, extra: Partial<Job> = {}) =>
   api<Job>(`/api/jobs/${id}/status`, { method: "POST", body: JSON.stringify({ status, ...extra }) });
@@ -62,6 +83,8 @@ export const appendPrompt = (id: string, text: string, images?: string[]) =>
 export const cancelJob = (id: string) => api<Job>(`/api/jobs/${id}/cancel`, { method: "POST" });
 export const cancelEpic = (id: string) => api<Job>(`/api/jobs/${id}/cancel-epic`, { method: "POST" });
 export const removeJob = (id: string) => api(`/api/jobs/${id}`, { method: "DELETE" });
+// Delete a task and its whole subtree (no DB cascade exists server-side).
+export const removeJobCascade = (id: string) => api(`/api/jobs/${id}?cascade=1`, { method: "DELETE" });
 
 export const sendReply = (id: string, text: string, images: string[]) =>
   api(`/api/jobs/${id}/reply`, { method: "POST", body: JSON.stringify({ text, images }) });
