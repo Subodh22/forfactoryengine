@@ -1,6 +1,6 @@
 "use client";
 import { api } from "./api";
-import type { Job, Project, JobStatus, Repo } from "./types";
+import type { Job, Project, JobStatus, JobAssignee, Repo } from "./types";
 
 // All mutations go through the engine REST API. State updates arrive back over
 // the WebSocket (job.created / job.updated / project.* events), so callers don't
@@ -16,10 +16,37 @@ export interface CreateJobInput {
   effort?: string;
   autoRun?: boolean;
   needsApproval?: boolean; // guided create: clarify + plan approval before building
+  manual?: boolean;        // manual plan: hand-authored epic, no AI planner / queue
+  assignee?: JobAssignee;
 }
 
 export const createJob = (input: CreateJobInput) =>
   api<Job>("/api/jobs", { method: "POST", body: JSON.stringify(input) });
+
+// One node of a hand-authored plan tree. `localId` is a client-side id used to
+// wire `parentLocalId` (nesting) and `dependsOn` (run-after) before the real job
+// ids exist. Nodes must be sent pre-ordered (each parent before its children).
+export interface PlanNode {
+  localId: string;
+  parentLocalId?: string;
+  title: string;
+  prompt?: string;
+  assignee?: JobAssignee;
+  dependsOn?: string[];
+}
+
+export const createChildren = (epicId: string, nodes: PlanNode[]) =>
+  api<Job[]>(`/api/jobs/${epicId}/children`, { method: "POST", body: JSON.stringify({ nodes }) });
+
+// Tick a manual task off (or reopen it).
+export const setTaskDone = (id: string, done: boolean) =>
+  setJobStatus(id, done ? "completed" : "pending");
+
+// Edit a task in place — reassign between Claude/you, rename, or re-prompt.
+export const patchJob = (id: string, fields: { title?: string; prompt?: string; assignee?: JobAssignee }) =>
+  api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(fields) });
+
+export const setAssignee = (id: string, assignee: JobAssignee) => patchJob(id, { assignee });
 
 export const setJobStatus = (id: string, status: JobStatus, extra: Partial<Job> = {}) =>
   api<Job>(`/api/jobs/${id}/status`, { method: "POST", body: JSON.stringify({ status, ...extra }) });
