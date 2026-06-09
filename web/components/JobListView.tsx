@@ -284,11 +284,16 @@ function JobRow({ job, depth, ctx }: { job: Job; depth: number; ctx: RowCtx }) {
           className={`flex-1 min-w-0 bg-transparent font-mono text-[13px] focus:outline-none ${isDone ? "line-through text-muted" : "text-ink"}`}
         />
         {hasKids && <span className="flex-shrink-0 font-data text-[10px] text-muted">{kids.filter((k) => k.status === "completed").length}/{kids.length}</span>}
+        {/* Always-visible add-subtask button — nests arbitrarily deep. */}
+        <button
+          onClick={() => ctx.addSubtask(job)}
+          title="Add subtask"
+          className="flex-shrink-0 flex items-center gap-0.5 border-2 border-ink/40 text-muted hover:bg-ink hover:text-paper hover:border-ink transition-colors px-1 py-0.5"
+        ><Plus className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
           <button onClick={() => setAssignee(job.id, isHuman ? "agent" : "human")} title={isHuman ? "Hand to the agent" : "Do it myself"} className="text-muted hover:text-ink transition-colors">
             {isHuman ? <Bot className="w-3.5 h-3.5" /> : <Hand className="w-3.5 h-3.5" />}
           </button>
-          <button onClick={() => ctx.addSubtask(job)} title="Add subtask" className="text-muted hover:text-ink transition-colors"><Plus className="w-4 h-4" /></button>
           <button onClick={() => ctx.onSelect(job.id)} title="Open" className="text-muted hover:text-ink transition-colors"><ArrowUpRight className="w-4 h-4" /></button>
           <button onClick={() => ctx.deleteRow(job)} title="Delete" className="text-muted hover:text-[#d6210f] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
         </div>
