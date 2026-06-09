@@ -143,6 +143,25 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
     }
   }, [childrenOf]);
 
+  // Quick-add create: top-level task (parentId null) or a subtask under an
+  // existing task. Returns the created job so the quick-add can chain deeper.
+  const quickCreate = useCallback(async (title: string, parentId: string | null): Promise<Job | null> => {
+    try {
+      let job: Job | null;
+      if (parentId) {
+        job = await addTask(parentId, {
+          localId: uid(), title, assignee: "agent", parentJobId: parentId, priority: priorityForAppend(parentId),
+        });
+        if (job) setExpanded((e) => new Set(e).add(parentId));
+      } else {
+        if (!title.trim()) return null; // top-level needs a name (engine requires a prompt)
+        job = await createJob({ projectId, title, prompt: title, kind: "task" });
+      }
+      if (job) addJob(job);
+      return job ?? null;
+    } catch { toast.error("Could not add the task"); return null; }
+  }, [projectId, addJob, childrenOf]);
+
   const ctx: RowCtx = {
     childrenOf, expanded, toggleExpand,
     pendingFocusId, consumeFocus: () => setPendingFocusId(null),
@@ -170,7 +189,7 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
             {isOpen && (
               <div className="divide-y divide-ink/10">
                 {rows.map((job) => <JobRow key={job.id} job={job} depth={0} ctx={ctx} />)}
-                {g.key === "pending" && <QuickAdd projectId={projectId} onAdded={addJob} />}
+                {g.key === "pending" && <QuickAdd quickCreate={quickCreate} />}
               </div>
             )}
           </div>
@@ -180,38 +199,51 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
   );
 }
 
-function QuickAdd({ projectId, onAdded }: { projectId: string; onAdded: (j: Job) => void }) {
+function QuickAdd({ quickCreate }: { quickCreate: (title: string, parentId: string | null) => Promise<Job | null> }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // The task the next subtask nests under. Each subtask we create becomes the
+  // new anchor, so pressing the dropdown again makes a sub-subtask, and so on.
+  const anchor = useRef<string | null>(null);
 
-  async function add() {
+  async function addTopLevel() {
     const title = text.trim();
     if (!title || busy) return;
     setBusy(true);
-    try {
-      const job = await createJob({ projectId, title, prompt: title, kind: "task" });
-      onAdded(job);
-      setText("");
-      inputRef.current?.focus();
-    } catch {
-      toast.error("Could not add the task");
-    } finally {
-      setBusy(false);
-    }
+    const job = await quickCreate(title, null);
+    setBusy(false);
+    if (job) { anchor.current = job.id; setText(""); inputRef.current?.focus(); }
+  }
+
+  // Dropdown → create a subtask under the last task (deepening each press).
+  async function addSubtask() {
+    if (busy) return;
+    const title = text.trim();
+    setBusy(true);
+    // No anchor yet → behave like a normal add so the first item exists.
+    const parent = anchor.current;
+    const job = parent ? await quickCreate(title, parent) : await quickCreate(title, null);
+    setBusy(false);
+    if (job) { anchor.current = job.id; setText(""); inputRef.current?.focus(); }
   }
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5">
+    <div className="flex items-center gap-1.5 px-4 py-2.5">
       <Plus className="w-3.5 h-3.5 text-muted flex-shrink-0" />
       <input
         ref={inputRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-        placeholder="Add task — type and press Enter"
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopLevel(); } }}
+        placeholder="Add task — Enter for a task, ▾ for a subtask"
         className="flex-1 min-w-0 bg-transparent font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none"
       />
+      <button
+        onClick={addSubtask}
+        title={anchor.current ? "Add a subtask under the last task" : "Add a subtask"}
+        className="flex-shrink-0 flex items-center gap-0.5 border-2 border-ink/40 text-muted hover:bg-ink hover:text-paper hover:border-ink transition-colors px-1.5 py-0.5 font-data text-[9px] uppercase"
+      >Sub <ChevronDown className="w-3 h-3" /></button>
     </div>
   );
 }
@@ -283,16 +315,11 @@ function JobRow({ job, depth, ctx }: { job: Job; depth: number; ctx: RowCtx }) {
           className={`flex-1 min-w-0 bg-transparent font-mono text-[13px] focus:outline-none ${isDone ? "line-through text-muted" : "text-ink"}`}
         />
         {hasKids && <span className="flex-shrink-0 font-data text-[10px] text-muted">{kids.filter((k) => k.status === "completed").length}/{kids.length}</span>}
-        {/* Always-visible add-subtask button — nests arbitrarily deep. */}
-        <button
-          onClick={() => ctx.addSubtask(job)}
-          title="Add subtask"
-          className="flex-shrink-0 flex items-center gap-0.5 border-2 border-ink/40 text-muted hover:bg-ink hover:text-paper hover:border-ink transition-colors px-1 py-0.5"
-        ><Plus className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
           <button onClick={() => setAssignee(job.id, isHuman ? "agent" : "human")} title={isHuman ? "Hand to the agent" : "Do it myself"} className="text-muted hover:text-ink transition-colors">
             {isHuman ? <Bot className="w-3.5 h-3.5" /> : <Hand className="w-3.5 h-3.5" />}
           </button>
+          <button onClick={() => ctx.addSubtask(job)} title="Add subtask" className="text-muted hover:text-ink transition-colors"><Plus className="w-4 h-4" /></button>
           <button onClick={() => ctx.onSelect(job.id)} title="Open" className="text-muted hover:text-ink transition-colors"><ArrowUpRight className="w-4 h-4" /></button>
           <button onClick={() => ctx.deleteRow(job)} title="Delete" className="text-muted hover:text-[#d6210f] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
         </div>
