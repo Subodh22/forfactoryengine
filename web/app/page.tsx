@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { Plus, X, Menu } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { KanbanBoard } from "@/components/KanbanBoard";
+import { ProjectBoard } from "@/components/ProjectBoard";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
@@ -211,7 +211,7 @@ export default function Home() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 sm:p-12">
-            {tab === "board" && <KanbanBoard projectId={projectId} onSelectJob={setSelectedJob} />}
+            {tab === "board" && <ProjectBoard projectId={projectId} onSelectJob={setSelectedJob} />}
             {tab === "agents" && <AgentsGrid projectId={projectId} />}
             {tab === "chat" && projectId && (
               <div className="max-w-[760px] mx-auto"><ChatPanel projectId={projectId} onJobCreated={(id) => { setSelectedJob(id); setTab("board"); }} /></div>
