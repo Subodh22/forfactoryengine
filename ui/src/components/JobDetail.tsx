@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, Play, ChevronDown, ChevronUp } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, Play, ChevronDown, ChevronUp, Square } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, approvePlan } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, approvePlan, cancelJob, cancelEpic } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -102,6 +102,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const [redoImages, setRedoImages] = useState<string[]>([]);
   const [redoing, setRedoing] = useState(false);
   const redoFileInputRef = useRef<HTMLInputElement>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const addFiles = useCallback(async (files: FileList | File[], target: React.Dispatch<React.SetStateAction<string[]>> = setAttachedFiles) => {
@@ -246,6 +247,27 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <a href={job.prUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-ink underline hover:no-underline">
               <ExternalLink className="w-2.5 h-2.5" />View PR #{job.prNumber}
             </a>
+          )}
+          {(isRunning || isWaiting || isDelegating || job?.status === "queued") && (
+            <button
+              onClick={async () => {
+                setCancelling(true);
+                try {
+                  if (isEpic) await cancelEpic(jobId);
+                  else await cancelJob(jobId);
+                  toast.success("Job cancelled");
+                } catch (err) {
+                  toast.error(String(err instanceof Error ? err.message : err) || "Failed to cancel");
+                } finally {
+                  setCancelling(false);
+                }
+              }}
+              disabled={cancelling}
+              className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border-2 border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete transition-colors disabled:opacity-40"
+              title="Cancel this job"
+            >
+              <Square className="w-2.5 h-2.5" />{cancelling ? "Cancelling…" : "Cancel"}
+            </button>
           )}
           {isFinished && (
             <button onClick={() => setRedoOpen((o) => !o)} className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors" title="Re-run this job from scratch">
