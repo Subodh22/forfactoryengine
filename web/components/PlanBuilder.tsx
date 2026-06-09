@@ -1,178 +1,430 @@
 "use client";
-import { useState } from "react";
-import { Plus, Trash2, Bot, Hand, ChevronDown, ChevronRight, ListTree } from "lucide-react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import {
+  Plus, Trash2, Bot, Hand, ChevronDown, ChevronRight, ListTree, Check, Play,
+  RotateCcw, LayoutGrid, List as ListIcon, Loader2, Flag,
+} from "lucide-react";
 import { toast } from "sonner";
-import { useFactory } from "@/lib/data";
-import { createJob, createChildren, type PlanNode } from "@/lib/mutations";
-import type { JobAssignee } from "@/lib/types";
+import { useFactory, useDescendants } from "@/lib/data";
+import {
+  createJob, addTask, patchJob, setAssignee, setTaskDone, reparentTask, reorderTask,
+  queueJob, requeueJob, removeJob, removeJobCascade, finishPlan,
+} from "@/lib/mutations";
+import type { Job } from "@/lib/types";
+import { PlanBoard } from "@/components/PlanBoard";
 
-// A node of the plan being authored. `assignee` is "agent" (Claude runs it) or
-// "human" (you tick it off). Children nest arbitrarily deep.
-interface Node {
-  id: string;
-  title: string;
-  prompt: string;
-  assignee: Exclude<JobAssignee, "">;
-  children: Node[];
-}
-
+// Sentinel that matches no job's parentJobId — keeps useDescendants("") from
+// returning the whole project before a plan epic exists.
+const NO_EPIC = "__no_epic__";
+const GAP = 1000; // priority spacing so we can insert between rows without renumbering
 const uid = () => crypto.randomUUID();
-const newNode = (assignee: Node["assignee"] = "agent"): Node => ({ id: uid(), title: "", prompt: "", assignee, children: [] });
 
-// Immutably map over the tree, applying `fn` to the node with `id`.
-function mapNode(nodes: Node[], id: string, fn: (n: Node) => Node): Node[] {
-  return nodes.map((n) => (n.id === id ? fn(n) : { ...n, children: mapNode(n.children, id, fn) }));
-}
-function removeNode(nodes: Node[], id: string): Node[] {
-  return nodes.filter((n) => n.id !== id).map((n) => ({ ...n, children: removeNode(n.children, id) }));
+// ── Debounced callback (no lodash) ───────────────────────────────────────────
+function useDebouncedCallback<A extends unknown[]>(fn: (...args: A) => void, ms: number) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+  const pending = useRef<A | null>(null);
+  const call = useCallback((...args: A) => {
+    pending.current = args;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      const a = pending.current;
+      pending.current = null;
+      if (a) fnRef.current(...a);
+    }, ms);
+  }, [ms]);
+  const flush = useCallback(() => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (pending.current) { const a = pending.current; pending.current = null; fnRef.current(...a); }
+  }, []);
+  const cancel = useCallback(() => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    pending.current = null;
+  }, []);
+  useEffect(() => cancel, [cancel]);
+  return { call, flush, cancel };
 }
 
-// Flatten the tree to a pre-ordered list (each parent before its children) so the
-// engine can wire parentLocalId as it inserts.
-function flatten(nodes: Node[], parentLocalId?: string): PlanNode[] {
-  const out: PlanNode[] = [];
-  for (const n of nodes) {
-    if (!n.title.trim()) continue;
-    out.push({ localId: n.id, parentLocalId, title: n.title.trim(), prompt: n.prompt.trim() || undefined, assignee: n.assignee });
-    out.push(...flatten(n.children, n.id));
+interface DisplayRow { job: Job; depth: number }
+
+// Group the subtree by parent, sort each group by priority, and emit a
+// pre-ordered (parent-before-children) list with a depth for indentation.
+function buildRows(tasks: Job[], epicId: string): DisplayRow[] {
+  const byParent = new Map<string, Job[]>();
+  for (const j of tasks) {
+    const arr = byParent.get(j.parentJobId);
+    if (arr) arr.push(j); else byParent.set(j.parentJobId, [j]);
   }
-  return out;
-}
-function countTitled(nodes: Node[]): number {
-  return nodes.reduce((sum, n) => sum + (n.title.trim() ? 1 : 0) + countTitled(n.children), 0);
+  for (const arr of byParent.values()) arr.sort((a, b) => a.priority - b.priority);
+  const rows: DisplayRow[] = [];
+  const walk = (parentId: string, depth: number) => {
+    for (const j of byParent.get(parentId) ?? []) {
+      rows.push({ job: j, depth });
+      walk(j.id, depth + 1);
+    }
+  };
+  walk(epicId, 0);
+  return rows;
 }
 
 interface Props {
   projectId: string;
-  onCreated?: (epicId: string) => void;
 }
 
-export function PlanBuilder({ projectId, onCreated }: Props) {
-  const [planName, setPlanName] = useState("");
-  const [nodes, setNodes] = useState<Node[]>([newNode()]);
-  const [saving, setSaving] = useState(false);
+export function PlanBuilder({ projectId }: Props) {
   const { addJob } = useFactory();
+  const [epicId, setEpicId] = useState<string | null>(null);
+  const [planName, setPlanName] = useState("");
+  const [view, setView] = useState<"list" | "board">("list");
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const creatingRef = useRef<Promise<string> | null>(null);
 
-  const taskCount = countTitled(nodes);
+  const tasks = useDescendants(epicId ?? NO_EPIC);
+  const rows = useMemo(() => (epicId ? buildRows(tasks, epicId) : []), [tasks, epicId]);
+  const doneCount = tasks.filter((t) => t.status === "completed").length;
 
-  function addTopLevel() {
-    setNodes((ns) => [...ns, newNode()]);
-  }
-  function addChild(parentId: string) {
-    setNodes((ns) => mapNode(ns, parentId, (n) => ({ ...n, children: [...n.children, newNode()] })));
-  }
-  function patch(id: string, fields: Partial<Node>) {
-    setNodes((ns) => mapNode(ns, id, (n) => ({ ...n, ...fields })));
-  }
-  function remove(id: string) {
-    setNodes((ns) => removeNode(ns, id));
-  }
+  const nameDebounce = useDebouncedCallback((v: string) => {
+    if (epicId) patchJob(epicId, { title: v.trim() || "Untitled plan" });
+  }, 400);
 
-  async function create() {
-    const name = planName.trim();
-    if (!name) return toast.error("Name your plan first");
-    const planNodes = flatten(nodes);
-    if (!planNodes.length) return toast.error("Add at least one task");
-    setSaving(true);
-    try {
+  // Lazily create the manual epic on first task. Promise-shared so two fast
+  // Enters can't create two epics.
+  const ensureEpic = useCallback(async (): Promise<string> => {
+    if (epicId) return epicId;
+    if (creatingRef.current) return creatingRef.current;
+    const name = planName.trim() || "Untitled plan";
+    creatingRef.current = (async () => {
       const epic = await createJob({ projectId, title: name, prompt: name, kind: "epic", manual: true });
       addJob(epic);
-      await createChildren(epic.id, planNodes);
-      toast.success(`Plan created — ${planNodes.length} task${planNodes.length === 1 ? "" : "s"}`);
-      onCreated?.(epic.id);
-      setPlanName("");
-      setNodes([newNode()]);
-    } catch (err) {
-      toast.error("Failed to create plan");
-      console.error(err);
+      setEpicId(epic.id);
+      return epic.id;
+    })();
+    return creatingRef.current;
+  }, [epicId, planName, projectId, addJob]);
+
+  function siblingsOf(parentId: string): Job[] {
+    return tasks.filter((t) => t.parentJobId === parentId).sort((a, b) => a.priority - b.priority);
+  }
+  function priorityForAppend(parentId: string): number {
+    const sibs = siblingsOf(parentId);
+    return sibs.length ? sibs[sibs.length - 1].priority + GAP : GAP;
+  }
+  // Renumber a sibling group to 1×GAP, 2×GAP… and return the new local view.
+  async function renormalize(parentId: string): Promise<Job[]> {
+    const sibs = siblingsOf(parentId);
+    await Promise.all(sibs.map((s, i) => reorderTask(s.id, (i + 1) * GAP)));
+    return sibs.map((s, i) => ({ ...s, priority: (i + 1) * GAP }));
+  }
+  // Priority for a new row inserted right after `afterId` within `parentId`.
+  async function priorityAfter(parentId: string, afterId: string | null): Promise<number> {
+    let sibs = siblingsOf(parentId);
+    const idx = afterId ? sibs.findIndex((s) => s.id === afterId) : sibs.length - 1;
+    const cur = idx >= 0 ? sibs[idx] : null;
+    let next = sibs[idx + 1];
+    if (!cur) return GAP;
+    if (!next) return cur.priority + GAP;
+    if (next.priority - cur.priority >= 2) return Math.floor((cur.priority + next.priority) / 2);
+    // Gap collapsed — renumber and recompute from the fresh values.
+    sibs = await renormalize(parentId);
+    const i2 = afterId ? sibs.findIndex((s) => s.id === afterId) : sibs.length - 1;
+    const c2 = sibs[i2];
+    next = sibs[i2 + 1];
+    return next ? Math.floor((c2.priority + next.priority) / 2) : c2.priority + GAP;
+  }
+
+  const newTask = useCallback(async (parentId: string, priority: number, assignee: Job["assignee"]) => {
+    const eid = await ensureEpic();
+    const realParent = parentId === NO_EPIC ? eid : parentId;
+    const job = await addTask(eid, {
+      localId: uid(), title: "", assignee: assignee || "agent", parentJobId: realParent, priority,
+    });
+    if (job) { addJob(job); setPendingFocusId(job.id); }
+    return job;
+  }, [ensureEpic, addJob]);
+
+  // Enter on a row → insert a sibling right after it.
+  const addAfter = useCallback(async (job: Job) => {
+    const parentId = job.parentJobId || epicId || NO_EPIC;
+    const priority = await priorityAfter(parentId, job.id);
+    await newTask(parentId, priority, job.assignee);
+  }, [epicId, newTask, tasks]);
+
+  // Bottom "add task" row → append a top-level task.
+  const addTopLevel = useCallback(async () => {
+    const eid = await ensureEpic();
+    await newTask(eid, priorityForAppend(eid), "agent");
+  }, [ensureEpic, newTask, tasks]);
+
+  const addChild = useCallback(async (job: Job) => {
+    await newTask(job.id, priorityForAppend(job.id), "agent");
+  }, [newTask, tasks]);
+
+  // Tab → indent under the immediately-preceding sibling.
+  const indent = useCallback(async (job: Job) => {
+    if (job.status === "running" || job.status === "queued") return;
+    const sibs = siblingsOf(job.parentJobId);
+    const idx = sibs.findIndex((s) => s.id === job.id);
+    if (idx <= 0) return; // first child can't indent
+    const prev = sibs[idx - 1];
+    await reparentTask(job.id, prev.id, priorityForAppend(prev.id));
+  }, [tasks]);
+
+  // Shift+Tab → outdent to the grandparent, just after the old parent.
+  const outdent = useCallback(async (job: Job) => {
+    if (job.status === "running" || job.status === "queued") return;
+    if (!epicId || job.parentJobId === epicId) return; // already top-level
+    const parent = tasks.find((t) => t.id === job.parentJobId);
+    if (!parent) return;
+    const grandparent = parent.parentJobId || epicId;
+    const priority = await priorityAfter(grandparent, parent.id);
+    await reparentTask(job.id, grandparent, priority);
+  }, [epicId, tasks]);
+
+  // Backspace on an empty leaf → delete it, focus the previous row.
+  const deleteLeaf = useCallback(async (job: Job) => {
+    const hasChildren = tasks.some((t) => t.parentJobId === job.id);
+    if (hasChildren) return;
+    const i = rows.findIndex((r) => r.job.id === job.id);
+    if (i > 0) setPendingFocusId(rows[i - 1].job.id);
+    await removeJob(job.id);
+  }, [tasks, rows]);
+
+  const deleteRow = useCallback(async (job: Job) => {
+    const descendants = tasks.filter((t) => t.parentJobId === job.id).length;
+    if (descendants > 0) {
+      if (!window.confirm(`Delete "${job.title || "this task"}" and its ${descendants} subtask${descendants === 1 ? "" : "s"}?`)) return;
+      await removeJobCascade(job.id);
+    } else {
+      await removeJob(job.id);
+    }
+  }, [tasks]);
+
+  async function onFinish() {
+    if (!epicId || finishing) return;
+    setFinishing(true);
+    try {
+      await finishPlan(epicId);
+      toast.success("Plan finished");
+    } catch {
+      toast.error("Could not finish the plan");
     } finally {
-      setSaving(false);
+      setFinishing(false);
     }
   }
 
   return (
     <div className="bg-paper border-4 border-ink brutal-shadow grid-bg">
-      <div className="flex justify-between items-center px-5 py-4 border-b-4 border-ink bg-paper">
+      <div className="flex justify-between items-center px-5 py-4 border-b-4 border-ink bg-paper gap-3">
         <b className="font-display uppercase text-[15px] flex items-center gap-2"><ListTree className="w-4 h-4" /> Plan it yourself</b>
-        <span className="font-data text-[10px] uppercase text-muted">{taskCount} task{taskCount === 1 ? "" : "s"}</span>
+        <div className="flex items-center gap-3">
+          <span className="font-data text-[10px] uppercase text-muted">{doneCount}/{tasks.length} done</span>
+          <div className="flex border-2 border-ink">
+            <button
+              onClick={() => setView("list")}
+              className={`font-data text-[10px] px-2 py-1 uppercase flex items-center gap-1 transition-colors ${view === "list" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
+            ><ListIcon className="w-3 h-3" /> List</button>
+            <button
+              onClick={() => setView("board")}
+              className={`font-data text-[10px] px-2 py-1 uppercase flex items-center gap-1 border-l-2 border-ink transition-colors ${view === "board" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
+            ><LayoutGrid className="w-3 h-3" /> Board</button>
+          </div>
+        </div>
       </div>
 
       <div className="px-5 py-3 border-b-4 border-ink bg-paper">
         <input
           value={planName}
-          onChange={(e) => setPlanName(e.target.value)}
+          onChange={(e) => { setPlanName(e.target.value); nameDebounce.call(e.target.value); }}
           placeholder="Plan name — e.g. “Ship the billing page”"
           className="w-full border-[3px] border-ink bg-concrete px-3 py-2 font-mono text-[14px] text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_3px_var(--ink)]"
         />
       </div>
 
-      <div className="p-3 bg-paper max-h-[50vh] overflow-y-auto">
-        {nodes.map((n) => (
-          <NodeRow key={n.id} node={n} depth={0} onPatch={patch} onAddChild={addChild} onRemove={remove} />
-        ))}
-        <button onClick={addTopLevel} className="mt-1 font-data text-[11px] uppercase flex items-center gap-1.5 text-muted hover:text-ink transition-colors px-1.5 py-1">
-          <Plus className="w-3.5 h-3.5" /> Add task
-        </button>
-      </div>
+      {view === "board" ? (
+        <div className="p-3 bg-paper min-h-[40vh]">
+          {epicId
+            ? <PlanBoard epicId={epicId} />
+            : <p className="font-data text-[10px] uppercase text-muted p-4">Add a task to start the board.</p>}
+        </div>
+      ) : (
+        <div className="p-3 bg-paper max-h-[55vh] overflow-y-auto">
+          {rows.map((r) => (
+            <TaskRow
+              key={r.job.id}
+              job={r.job}
+              depth={r.depth}
+              hasChildren={tasks.some((t) => t.parentJobId === r.job.id)}
+              pendingFocusId={pendingFocusId}
+              onFocusConsumed={() => setPendingFocusId(null)}
+              onEnter={addAfter}
+              onIndent={indent}
+              onOutdent={outdent}
+              onBackspaceEmpty={deleteLeaf}
+              onAddChild={addChild}
+              onDelete={deleteRow}
+            />
+          ))}
+          <button
+            onClick={addTopLevel}
+            className="mt-1 w-full text-left font-data text-[11px] uppercase flex items-center gap-1.5 text-muted hover:text-ink transition-colors px-1.5 py-2 border-2 border-dashed border-ink/30 hover:border-ink"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add task
+          </button>
+        </div>
+      )}
 
-      <div className="flex justify-between items-center px-5 py-4 border-t-4 border-ink bg-paper">
+      <div className="flex justify-between items-center px-5 py-4 border-t-4 border-ink bg-paper gap-3">
         <p className="font-data text-[10px] uppercase text-muted">
-          <Bot className="w-3 h-3 inline mb-0.5" /> agent runs it · <Hand className="w-3 h-3 inline mb-0.5" /> you tick it off
+          <Bot className="w-3 h-3 inline mb-0.5" /> agent runs it · <Hand className="w-3 h-3 inline mb-0.5" /> you tick it off · ⏎ next · ⇥ indent
         </p>
-        <button onClick={create} disabled={saving || !taskCount} className="font-display uppercase text-[14px] bg-ink text-paper px-7 py-3 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none">
-          {saving ? "Creating…" : "Create plan"}
+        <button
+          onClick={onFinish}
+          disabled={!epicId || finishing}
+          className="font-display uppercase text-[13px] bg-ink text-paper px-6 py-2.5 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+        >
+          <Flag className="w-3.5 h-3.5" /> {finishing ? "Finishing…" : "Finish plan"}
         </button>
       </div>
     </div>
   );
 }
 
-function NodeRow({ node, depth, onPatch, onAddChild, onRemove }: {
-  node: Node; depth: number;
-  onPatch: (id: string, f: Partial<Node>) => void;
-  onAddChild: (id: string) => void;
-  onRemove: (id: string) => void;
+// ── Single task row ──────────────────────────────────────────────────────────
+function TaskRow({
+  job, depth, hasChildren, pendingFocusId, onFocusConsumed,
+  onEnter, onIndent, onOutdent, onBackspaceEmpty, onAddChild, onDelete,
+}: {
+  job: Job; depth: number; hasChildren: boolean;
+  pendingFocusId: string | null; onFocusConsumed: () => void;
+  onEnter: (j: Job) => void; onIndent: (j: Job) => void; onOutdent: (j: Job) => void;
+  onBackspaceEmpty: (j: Job) => void; onAddChild: (j: Job) => void; onDelete: (j: Job) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const isAgent = node.assignee === "agent";
+  const [draft, setDraft] = useState(job.title);
+  const dirty = useRef(false);
+  const isHuman = job.assignee === "human";
+  const isDone = job.status === "completed";
+
+  const titleDebounce = useDebouncedCallback((v: string) => {
+    patchJob(job.id, { title: v });
+    dirty.current = false;
+  }, 300);
+  const promptDebounce = useDebouncedCallback((v: string) => patchJob(job.id, { prompt: v }), 300);
+
+  // Adopt server value only when the user isn't mid-edit (avoids cursor jumps).
+  useEffect(() => { if (!dirty.current) setDraft(job.title); }, [job.title]);
+
+  // Focus this row when it's the freshly-created / post-delete target.
+  useEffect(() => {
+    if (pendingFocusId === job.id) {
+      const el = inputRef.current;
+      el?.focus();
+      if (el) el.setSelectionRange(el.value.length, el.value.length);
+      onFocusConsumed();
+    }
+  }, [pendingFocusId, job.id, onFocusConsumed]);
+
+  function flushTitle() {
+    if (dirty.current) { titleDebounce.flush(); }
+  }
+
+  function onChange(v: string) {
+    setDraft(v);
+    dirty.current = true;
+    titleDebounce.call(v);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      flushTitle();
+      onEnter(job);
+    } else if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      onIndent(job);
+    } else if (e.key === "Tab" && e.shiftKey) {
+      e.preventDefault();
+      onOutdent(job);
+    } else if (e.key === "Backspace" && draft === "" && e.currentTarget.selectionStart === 0) {
+      e.preventDefault();
+      onBackspaceEmpty(job);
+    }
+  }
+
+  function onCircleClick() {
+    if (isHuman) { setTaskDone(job.id, !isDone); return; }
+    // Agent task: circle drives the run lifecycle.
+    if (isDone) { setTaskDone(job.id, false); return; }       // reopen
+    if (job.status === "failed") { requeueJob(job.id); return; } // retry
+    if (job.status === "pending") {
+      if (!draft.trim()) { toast.error("Name the task first"); return; }
+      queueJob(job.id); // run it
+    }
+    // queued/running/waiting → no-op
+  }
 
   return (
-    <div>
+    <div className="group">
       <div className="flex items-center gap-2 py-1" style={{ paddingLeft: depth * 22 }}>
-        <button
-          onClick={() => onPatch(node.id, { assignee: isAgent ? "human" : "agent" })}
-          title={isAgent ? "Agent runs this — click to do it yourself" : "You do this — click to assign the agent"}
-          className={`flex-shrink-0 w-6 h-6 border-2 border-ink flex items-center justify-center transition-colors ${isAgent ? "bg-ink text-paper" : "bg-paper text-ink"}`}
-        >
-          {isAgent ? <Bot className="w-3.5 h-3.5" /> : <Hand className="w-3.5 h-3.5" />}
-        </button>
+        <StatusCircle job={job} isHuman={isHuman} isDone={isDone} onClick={onCircleClick} />
         <input
-          value={node.title}
-          onChange={(e) => onPatch(node.id, { title: e.target.value })}
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={flushTitle}
           placeholder={depth === 0 ? "Task name…" : "Subtask name…"}
-          className="flex-1 min-w-0 border-2 border-ink bg-concrete px-2 py-1.5 font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)]"
+          className={`flex-1 min-w-0 border-2 border-ink bg-concrete px-2 py-1.5 font-mono text-[13px] placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] ${isDone ? "line-through text-muted" : "text-ink"}`}
         />
-        <button onClick={() => setOpen((o) => !o)} title="Details" className="flex-shrink-0 text-muted hover:text-ink transition-colors">
-          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        </button>
-        <button onClick={() => onAddChild(node.id)} title="Add subtask" className="flex-shrink-0 text-muted hover:text-ink transition-colors"><Plus className="w-4 h-4" /></button>
-        <button onClick={() => onRemove(node.id)} title="Delete" className="flex-shrink-0 text-muted hover:text-[#d6210f] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+        {/* Hover row actions */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <button
+            onClick={() => setAssignee(job.id, isHuman ? "agent" : "human")}
+            title={isHuman ? "Hand to the agent" : "Do it myself"}
+            className="flex-shrink-0 text-muted hover:text-ink transition-colors"
+          >{isHuman ? <Bot className="w-3.5 h-3.5" /> : <Hand className="w-3.5 h-3.5" />}</button>
+          <button onClick={() => setOpen((o) => !o)} title="Details" className="flex-shrink-0 text-muted hover:text-ink transition-colors">
+            {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </button>
+          <button onClick={() => onAddChild(job)} title="Add subtask" className="flex-shrink-0 text-muted hover:text-ink transition-colors"><Plus className="w-4 h-4" /></button>
+          <button onClick={() => onDelete(job)} title="Delete" className="flex-shrink-0 text-muted hover:text-[#d6210f] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+        </div>
+        {hasChildren && !open && <span className="flex-shrink-0 font-data text-[9px] text-muted">▾</span>}
       </div>
 
       {open && (
         <div className="py-1" style={{ paddingLeft: depth * 22 + 32 }}>
           <textarea
-            value={node.prompt}
-            onChange={(e) => onPatch(node.id, { prompt: e.target.value })}
-            placeholder={isAgent ? "Instructions for the agent (optional — defaults to the task name)…" : "Notes (optional)…"}
+            defaultValue={job.prompt === job.title ? "" : job.prompt}
+            onChange={(e) => promptDebounce.call(e.target.value)}
+            onBlur={() => promptDebounce.flush()}
+            placeholder={isHuman ? "Notes (optional)…" : "Instructions for the agent (optional — defaults to the task name)…"}
             className="w-full min-h-[60px] resize-y border-2 border-ink bg-concrete px-2 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)]"
           />
         </div>
       )}
-
-      {node.children.map((c) => (
-        <NodeRow key={c.id} node={c} depth={depth + 1} onPatch={onPatch} onAddChild={onAddChild} onRemove={onRemove} />
-      ))}
     </div>
+  );
+}
+
+function StatusCircle({ job, isHuman, isDone, onClick }: { job: Job; isHuman: boolean; isDone: boolean; onClick: () => void }) {
+  const running = job.status === "running" || job.status === "queued" || job.status === "delegating";
+  const failed = job.status === "failed";
+  const base = "flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors";
+
+  let inner: React.ReactNode = null;
+  let cls = "border-ink bg-paper hover:bg-concrete";
+  let title = isHuman ? "Mark done" : "Run task";
+  if (isDone) { cls = "border-ink bg-ink text-paper"; inner = <Check className="w-3 h-3" />; title = "Done — click to reopen"; }
+  else if (running) { cls = "border-ink bg-paper text-ink"; inner = <Loader2 className="w-3 h-3 animate-spin" />; title = "Running…"; }
+  else if (failed) { cls = "border-[#d6210f] bg-paper text-[#d6210f]"; inner = <RotateCcw className="w-3 h-3" />; title = "Failed — click to retry"; }
+  else if (!isHuman) { inner = <Play className="w-2.5 h-2.5 text-muted" />; }
+
+  return (
+    <button onClick={onClick} title={title} className={`${base} ${cls}`}>{inner}</button>
   );
 }

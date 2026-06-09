@@ -80,7 +80,10 @@ function evaluateEpic({ epic, children }: EpicState) {
 
   const anyFailed = children.some((c) => c.status === "failed");
   const allDone = children.every((c) => c.status === "completed");
-  if (allDone && !finalizing.has(epic.id)) {
+  // Manual plans are live trackers — they never auto-close. The user finalizes
+  // explicitly via the Finish button (POST /api/jobs/:id/finish) so completing
+  // the current tasks can't push/close a plan that's still being edited.
+  if (allDone && !isManualEpic(epic) && !finalizing.has(epic.id)) {
     finalizing.add(epic.id);
     void finalizeEpic(epic).catch((err) => {
       finalizing.delete(epic.id);
@@ -91,7 +94,7 @@ function evaluateEpic({ epic, children }: EpicState) {
   }
 }
 
-async function finalizeEpic(epic: Job): Promise<void> {
+export async function finalizeEpic(epic: Job): Promise<void> {
   const project = await getProject(epic.projectId);
   if (!project) throw new Error("project not found");
 

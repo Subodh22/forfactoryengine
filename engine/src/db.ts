@@ -393,9 +393,9 @@ export async function createJob(input: {
 const JOB_COLUMNS: Record<string, string> = {
   title: "title", prompt: "prompt", status: "status", branch: "branch", prUrl: "pr_url",
   prNumber: "pr_number", error: "error", worktreePath: "worktree_path", sessionId: "session_id",
-  delegatorPlan: "delegator_plan", priority: "priority", startedAt: "started_at",
-  completedAt: "completed_at", inputTokens: "input_tokens", outputTokens: "output_tokens",
-  costUsd: "cost_usd", assignee: "assignee",
+  delegatorPlan: "delegator_plan", priority: "priority", parentJobId: "parent_job_id",
+  startedAt: "started_at", completedAt: "completed_at", inputTokens: "input_tokens",
+  outputTokens: "output_tokens", costUsd: "cost_usd", assignee: "assignee",
 };
 const JOB_JSON_COLUMNS: Record<string, string> = {
   images: "images", touchedPaths: "touched_paths", blockedBy: "blocked_by",
@@ -532,12 +532,20 @@ export function isManualEpic(job: Job): boolean {
 }
 
 // Every descendant of a job at any depth (breadth-first over parent links).
+// `seen` guards against a corrupt parent cycle (e.g. a bad re-parent) so the
+// walk can never loop forever.
 export async function descendantsOf(rootId: string): Promise<Job[]> {
   const out: Job[] = [];
   const queue = [rootId];
+  const seen = new Set<string>([rootId]);
   while (queue.length) {
     const kids = await childrenOf(queue.shift()!);
-    for (const k of kids) { out.push(k); queue.push(k.id); }
+    for (const k of kids) {
+      if (seen.has(k.id)) continue;
+      seen.add(k.id);
+      out.push(k);
+      queue.push(k.id);
+    }
   }
   return out;
 }
@@ -562,7 +570,10 @@ export async function rootEpicOf(job: Job): Promise<Job | null> {
 // Callers must send nodes pre-ordered (each parent before its children).
 export interface PlanNodeInput {
   localId: string; parentLocalId?: string; title: string; prompt?: string;
-  assignee?: JobAssignee; touchedPaths?: string[]; dependsOn?: string[];
+  assignee?: JobAssignee; touchedPaths?: string[]; dependsOn?: string[]; priority?: number;
+  // An explicit existing parent id — used by the live list to append a single
+  // task under any existing task. Falls back to parentLocalId, then the epic.
+  parentJobId?: string;
 }
 
 export async function createSubtree(epicId: string, nodes: PlanNodeInput[]): Promise<string[]> {
@@ -572,11 +583,13 @@ export async function createSubtree(epicId: string, nodes: PlanNodeInput[]): Pro
   const inserted: string[] = [];
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
-    const parentJobId = n.parentLocalId ? (idByLocal.get(n.parentLocalId) ?? epicId) : epicId;
+    const parentJobId = n.parentLocalId
+      ? (idByLocal.get(n.parentLocalId) ?? epicId)
+      : (n.parentJobId ?? epicId);
     const child = await createJob({
       projectId: epic.projectId, title: n.title, prompt: n.prompt?.trim() || n.title,
-      kind: "task", parentJobId, priority: i, assignee: n.assignee ?? "agent",
-      touchedPaths: n.touchedPaths ?? [],
+      kind: "task", parentJobId, priority: typeof n.priority === "number" ? n.priority : i,
+      assignee: n.assignee ?? "agent", touchedPaths: n.touchedPaths ?? [],
     });
     idByLocal.set(n.localId, child.id);
     inserted.push(child.id);
