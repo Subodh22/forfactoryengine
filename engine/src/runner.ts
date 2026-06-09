@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  getJob, getProject, getSetting, listJobsByStatus, updateUsage, patchJob, updateProject, type Job, type Project,
+  getJob, getProject, getSetting, listJobsByStatus, updateUsage, patchJob, updateProject, rootEpicOf, type Job, type Project,
 } from "./db";
 import { emitOutput, emitChat } from "./events";
 import { updateStatus } from "./status";
@@ -74,14 +74,32 @@ interface LiveContext {
 }
 const liveContext = new Map<string, LiveContext>();
 
+// Generic promise-chain mutex: serialize async work sharing a key. Each call
+// links onto the previous one for that key so they run strictly one at a time.
+// A failure in one link doesn't break the chain (the next still runs), but the
+// caller still sees its own rejection.
+function serialize<T>(locks: Map<string, Promise<unknown>>, key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = locks.get(key) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(fn);
+  locks.set(key, next.catch(() => {}));
+  return next;
+}
+
 // Serialize the merge-into-epic step per epic so concurrent child tasks don't
 // race on the shared integration branch.
 const epicLocks = new Map<string, Promise<unknown>>();
 function withEpicLock<T>(epicId: string, fn: () => Promise<T>): Promise<T> {
-  const prev = epicLocks.get(epicId) ?? Promise.resolve();
-  const next = prev.catch(() => {}).then(fn);
-  epicLocks.set(epicId, next.catch(() => {}));
-  return next;
+  return serialize(epicLocks, epicId, fn);
+}
+
+// Serialize direct pushes to a repo's default branch so concurrent jobs don't
+// race on commit→fetch→rebase→push. Without this, a job that fetched an older
+// main tip pushes after another job advanced it and gets rejected
+// (non-fast-forward). Keyed per repo path. Whoever holds the lock rebases onto
+// the freshly-pushed tip, so its push always fast-forwards.
+const pushLocks = new Map<string, Promise<unknown>>();
+function withPushLock<T>(repoPath: string, fn: () => Promise<T>): Promise<T> {
+  return serialize(pushLocks, repoPath, fn);
 }
 
 // Per-project session continuity — carry the session id across jobs so Claude
@@ -224,10 +242,13 @@ export async function startJob(jobId: string): Promise<void> {
     let childCtx: ChildContext | undefined;
     const isChild = !!job.parentJobId;
     if (job.parentJobId) {
-      const parent = await withRetry(() => getJob(job.parentJobId));
-      const epic = ensureEpicWorktree(project.localPath, job.parentJobId, project.defaultBranch);
-      baseBranch = parent?.branch || epic.branch;
-      childCtx = { parentJobId: job.parentJobId, epicBranch: epic.branch, epicWorktreePath: epic.worktreePath };
+      // Nesting is organizational — every agent task (however deep) branches off
+      // and merges into the one root-epic integration branch.
+      const root = await withRetry(() => rootEpicOf(job));
+      const epicId = root?.id ?? job.parentJobId;
+      const epic = ensureEpicWorktree(project.localPath, epicId, project.defaultBranch);
+      baseBranch = root?.branch || epic.branch;
+      childCtx = { parentJobId: epicId, epicBranch: epic.branch, epicWorktreePath: epic.worktreePath };
     }
 
     log(jobId, `Job started — "${job.title}"`);
@@ -428,7 +449,11 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
       }
     } else {
       log(jobId, `Pushing changes to ${project.defaultBranch}...`);
-      commitAndPushDirect(worktreePath, `feat: ${title}\n\nAutomated by Factory`, project.defaultBranch);
+      // Serialize per repo: only one job integrates into the default branch at a
+      // time, and it rebases onto the freshly-pushed tip first, so out-of-order
+      // completions can't cause non-fast-forward push rejections.
+      await withPushLock(project.localPath, async () =>
+        commitAndPushDirect(worktreePath, `feat: ${title}\n\nAutomated by Factory`, project.defaultBranch));
       await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
       log(jobId, `Merged to ${project.defaultBranch}.`);
     }

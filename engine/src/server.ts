@@ -5,9 +5,11 @@ import os from "node:os";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  listJobs, getJob, createJob, childrenOf, listProjects, getProject, createProject,
+  listJobs, getJob, createJob, patchJob, childrenOf, descendantsOf, createSubtree, MANUAL_PLAN_MARKER,
+  listProjects, getProject, createProject,
   updateProject, removeProject, removeJob, redoJob, appendPrompt, requeueJob, cancelEpic,
-  getTodayStats, getSetting, setSetting, approveDelegationPlan, type JobKind, type JobEffort, type JobStatus,
+  getTodayStats, getSetting, setSetting, approveDelegationPlan,
+  type Job, type JobKind, type JobEffort, type JobStatus, type JobAssignee,
 } from "./db";
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
@@ -284,13 +286,19 @@ export function startServer(port: number): http.Server {
         if (!prompt) return sendJson(res, 400, { error: "prompt required" });
         const title = (String(b.title ?? "").trim() || prompt).slice(0, 80);
         const kind = (String(b.kind ?? "") || "") as JobKind;
+        // Manual plan: a hand-authored epic. It skips the AI planner and the
+        // queue entirely — it sits in "delegating" while the user adds tasks and
+        // runs/ticks them one by one.
+        const manual = kind === "epic" && b.manual === true;
         // Epics must always be queued so the worker plans & splits them.
-        const wantsRun = b.autoRun === true || b.status === "queued" || kind === "epic";
+        const wantsRun = !manual && (b.autoRun === true || b.status === "queued" || kind === "epic");
         const job = await createJob({
           projectId, title, prompt,
           images: Array.isArray(b.images) ? (b.images as string[]) : [],
-          status: wantsRun ? "queued" : "pending",
+          status: manual ? "delegating" : (wantsRun ? "queued" : "pending"),
           kind,
+          assignee: (String(b.assignee ?? "") || "") as JobAssignee,
+          delegatorPlan: manual ? MANUAL_PLAN_MARKER : undefined,
           model: String(b.model ?? ""),
           effort: (String(b.effort ?? "") || "") as JobEffort,
           needsApproval: b.needsApproval === true, // guided create → clarify + plan gate
@@ -312,10 +320,38 @@ export function startServer(port: number): http.Server {
         if (method === "GET" && action === "children") {
           return sendJson(res, 200, await childrenOf(id));
         }
+        if (method === "POST" && action === "children") {
+          // Materialize a hand-authored plan tree under a manual epic.
+          const b = await readBody(req);
+          const nodes = Array.isArray(b.nodes) ? b.nodes : [];
+          if (!nodes.length) return sendJson(res, 400, { error: "nodes required" });
+          const ids = await createSubtree(id, nodes);
+          const created = [];
+          for (const cid of ids) {
+            const j = await getJob(cid);
+            if (j) { created.push(j); broadcast({ type: "job.created", job: j }); }
+          }
+          const epic = await getJob(id);
+          if (epic) broadcast({ type: "job.updated", job: epic });
+          scheduleDelegationCheck();
+          return sendJson(res, 201, created);
+        }
         if (method === "GET" && action === "output") {
           // Persisted agent log — fetched on open so finished jobs and reloads
           // show full history; the live tail continues over the WebSocket.
           return sendJson(res, 200, { output: readOutput(id) });
+        }
+        if (method === "PATCH" && !action) {
+          // In-place edits to a plan task: rename, re-prompt, or reassign.
+          const b = await readBody(req);
+          const fields: Partial<Job> = {};
+          if (typeof b.title === "string") fields.title = b.title.trim().slice(0, 80);
+          if (typeof b.prompt === "string") fields.prompt = b.prompt;
+          if (typeof b.assignee === "string") fields.assignee = b.assignee as JobAssignee;
+          await patchJob(id, fields);
+          const job = await getJob(id);
+          if (job) broadcast({ type: "job.updated", job });
+          return sendJson(res, 200, job);
         }
         if (method === "DELETE" && !action) {
           await removeJob(id);
@@ -328,6 +364,9 @@ export function startServer(port: number): http.Server {
           const status = String(b.status ?? "") as JobStatus;
           await updateStatus(id, status, b);
           if (status === "queued") enqueue(id);
+          // Ticking a manual task to completed (or reopening it) may unblock the
+          // owning epic's finalize check.
+          scheduleDelegationCheck();
           return sendJson(res, 200, await getJob(id));
         }
         if (method === "POST" && action === "queue") {
@@ -372,7 +411,7 @@ export function startServer(port: number): http.Server {
           return sendJson(res, 200, await getJob(id));
         }
         if (method === "POST" && action === "cancel-epic") {
-          const children = await childrenOf(id);
+          const children = await descendantsOf(id);
           for (const c of children) cancelJob(c.id);
           cancelJob(id);
           await cancelEpic(id);

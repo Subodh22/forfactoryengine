@@ -23,6 +23,10 @@ export interface Project {
   createdAt: number;
 }
 
+// Who carries out a task: "" / "agent" → Claude runs it; "human" → you do it by
+// hand and tick it off. Only meaningful inside a manual plan.
+export type JobAssignee = "" | "agent" | "human";
+
 export interface Job {
   id: string;
   projectId: string;
@@ -35,6 +39,7 @@ export interface Job {
   priority: number;
   touchedPaths: string[];
   blockedBy: string[];
+  assignee: JobAssignee;
   worktreePath: string;
   branch: string;
   prUrl: string;

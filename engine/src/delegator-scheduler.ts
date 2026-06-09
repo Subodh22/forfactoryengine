@@ -5,7 +5,7 @@ import { createPR } from "./agent/github";
 import { emitOutput } from "./events";
 import { sendJobNotification } from "./notify";
 import { updateStatus } from "./status";
-import { getProject, listDelegationState, type Job, type EpicState } from "./db";
+import { getProject, listDelegationState, isManualEpic, descendantsOf, type Job, type EpicState } from "./db";
 import { enqueue } from "./runner";
 
 // Idempotency guards across re-fires (single engine process).
@@ -55,22 +55,27 @@ function evaluateEpic({ epic, children }: EpicState) {
   const completed = new Set(children.filter((c) => c.status === "completed").map((c) => c.id));
   const inFlight: Job[] = children.filter((c) => c.status === "running" || c.status === "queued");
 
-  for (const c of children) {
-    if (c.status !== "pending" || promoted.has(c.id)) continue;
-    const ready = c.blockedBy.every((b) => completed.has(b));
-    if (!ready) continue;
-    const conflict = inFlight.some((s) => pathsOverlap(s.touchedPaths, c.touchedPaths));
-    if (conflict) continue;
+  // Manual plans run on the user's terms — agent tasks start only when the user
+  // clicks Run, and human tasks are ticked off by hand. We skip auto-promotion
+  // entirely and just watch for the whole subtree to finish so we can finalize.
+  if (!isManualEpic(epic)) {
+    for (const c of children) {
+      if (c.status !== "pending" || promoted.has(c.id)) continue;
+      const ready = c.blockedBy.every((b) => completed.has(b));
+      if (!ready) continue;
+      const conflict = inFlight.some((s) => pathsOverlap(s.touchedPaths, c.touchedPaths));
+      if (conflict) continue;
 
-    promoted.add(c.id);
-    inFlight.push(c);
-    log(epic.id, `Dispatching subtask "${c.title}".`);
-    updateStatus(c.id, "queued")
-      .then(() => enqueue(c.id))
-      .catch((err) => {
-        promoted.delete(c.id);
-        console.error(`[delegator] promote failed for ${c.id}: ${err}`);
-      });
+      promoted.add(c.id);
+      inFlight.push(c);
+      log(epic.id, `Dispatching subtask "${c.title}".`);
+      updateStatus(c.id, "queued")
+        .then(() => enqueue(c.id))
+        .catch((err) => {
+          promoted.delete(c.id);
+          console.error(`[delegator] promote failed for ${c.id}: ${err}`);
+        });
+    }
   }
 
   const anyFailed = children.some((c) => c.status === "failed");
@@ -89,6 +94,21 @@ function evaluateEpic({ epic, children }: EpicState) {
 async function finalizeEpic(epic: Job): Promise<void> {
   const project = await getProject(epic.projectId);
   if (!project) throw new Error("project not found");
+
+  // A manual plan made of only human tasks (or whose agent tasks were never run)
+  // has no branch to merge — just mark it done.
+  if (isManualEpic(epic)) {
+    const subtree = await descendantsOf(epic.id);
+    const anyAgentWork = subtree.some((c) => c.assignee !== "human" && c.status === "completed");
+    if (!anyAgentWork) {
+      log(epic.id, "Plan complete — all tasks done.");
+      await updateStatus(epic.id, "completed");
+      await sendJobNotification({ jobId: epic.id, title: epic.title, status: "completed", projectName: project.name }).catch(() => {});
+      finalizing.delete(epic.id);
+      promoted.delete(epic.id);
+      return;
+    }
+  }
 
   const { worktreePath, branch } = ensureEpicWorktree(project.localPath, epic.id, project.defaultBranch);
 

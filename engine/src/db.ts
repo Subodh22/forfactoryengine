@@ -48,6 +48,9 @@ export type JobStatus =
 
 export type JobKind = "epic" | "task" | "";
 export type JobEffort = "low" | "medium" | "high" | "max" | "";
+// Who carries out a task. "" / "agent" → Claude runs it; "human" → you do it by
+// hand and tick it off. Only meaningful for tasks inside a manual plan.
+export type JobAssignee = "" | "agent" | "human";
 
 export interface Job {
   id: string;
@@ -61,6 +64,7 @@ export interface Job {
   priority: number;
   touchedPaths: string[];
   blockedBy: string[];
+  assignee: JobAssignee;
   worktreePath: string;
   branch: string;
   prUrl: string;
@@ -156,6 +160,7 @@ export async function initSchema(): Promise<void> {
     ["cost_usd", "REAL NOT NULL DEFAULT 0"],
     ["started_at", "INTEGER NOT NULL DEFAULT 0"],
     ["completed_at", "INTEGER NOT NULL DEFAULT 0"],
+    ["assignee", "TEXT NOT NULL DEFAULT ''"],
   ];
   for (const [col, def] of jobCols) {
     try { await db.execute(`ALTER TABLE jobs ADD COLUMN ${col} ${def}`); } catch { /* exists */ }
@@ -293,6 +298,7 @@ function rowToJob(r: Row): Job {
     priority: Number(r.priority ?? 50),
     touchedPaths: parseJsonArray(r.touched_paths),
     blockedBy: parseJsonArray(r.blocked_by),
+    assignee: String(r.assignee ?? "") as JobAssignee,
     worktreePath: String(r.worktree_path ?? ""),
     branch: String(r.branch ?? ""),
     prUrl: String(r.pr_url ?? ""),
@@ -339,6 +345,7 @@ export async function createJob(input: {
   images?: string[]; status?: JobStatus; kind?: JobKind; parentJobId?: string;
   priority?: number; touchedPaths?: string[]; blockedBy?: string[];
   model?: string; effort?: JobEffort; needsApproval?: boolean;
+  assignee?: JobAssignee; delegatorPlan?: string;
 }): Promise<Job> {
   const job: Job = {
     id: crypto.randomUUID(),
@@ -352,13 +359,14 @@ export async function createJob(input: {
     priority: input.priority ?? 50,
     touchedPaths: input.touchedPaths ?? [],
     blockedBy: input.blockedBy ?? [],
+    assignee: input.assignee ?? "",
     worktreePath: "",
     branch: "",
     prUrl: "",
     prNumber: 0,
     error: "",
     sessionId: "",
-    delegatorPlan: "",
+    delegatorPlan: input.delegatorPlan ?? "",
     needsApproval: input.needsApproval ?? false,
     model: input.model ?? "",
     effort: input.effort ?? "",
@@ -370,12 +378,13 @@ export async function createJob(input: {
     createdAt: Date.now(),
   };
   await db.execute({
-    sql: `INSERT INTO jobs (id, project_id, title, prompt, images, status, kind, parent_job_id, priority, touched_paths, blocked_by, model, effort, needs_approval, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO jobs (id, project_id, title, prompt, images, status, kind, parent_job_id, priority, touched_paths, blocked_by, assignee, delegator_plan, model, effort, needs_approval, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       job.id, job.projectId, job.title, job.prompt, JSON.stringify(job.images), job.status,
       job.kind, job.parentJobId, job.priority, JSON.stringify(job.touchedPaths),
-      JSON.stringify(job.blockedBy), job.model, job.effort, job.needsApproval ? 1 : 0, job.createdAt,
+      JSON.stringify(job.blockedBy), job.assignee, job.delegatorPlan, job.model, job.effort,
+      job.needsApproval ? 1 : 0, job.createdAt,
     ],
   });
   return job;
@@ -386,7 +395,7 @@ const JOB_COLUMNS: Record<string, string> = {
   prNumber: "pr_number", error: "error", worktreePath: "worktree_path", sessionId: "session_id",
   delegatorPlan: "delegator_plan", priority: "priority", startedAt: "started_at",
   completedAt: "completed_at", inputTokens: "input_tokens", outputTokens: "output_tokens",
-  costUsd: "cost_usd",
+  costUsd: "cost_usd", assignee: "assignee",
 };
 const JOB_JSON_COLUMNS: Record<string, string> = {
   images: "images", touchedPaths: "touched_paths", blockedBy: "blocked_by",
@@ -511,6 +520,75 @@ export async function createChildren(epicId: string, subtasks: SubtaskInput[]): 
   return inserted;
 }
 
+// ── Manual plans (hand-authored task trees) ─────────────────────────────────
+
+// Marks an epic whose subtree was authored by the user rather than the AI
+// delegator. The non-empty delegatorPlan also makes the runner skip AI planning.
+export const MANUAL_PLAN_MARKER = JSON.stringify({ manual: true });
+
+export function isManualEpic(job: Job): boolean {
+  if (job.kind !== "epic" || !job.delegatorPlan) return false;
+  try { return JSON.parse(job.delegatorPlan)?.manual === true; } catch { return false; }
+}
+
+// Every descendant of a job at any depth (breadth-first over parent links).
+export async function descendantsOf(rootId: string): Promise<Job[]> {
+  const out: Job[] = [];
+  const queue = [rootId];
+  while (queue.length) {
+    const kids = await childrenOf(queue.shift()!);
+    for (const k of kids) { out.push(k); queue.push(k.id); }
+  }
+  return out;
+}
+
+// Walk up parent links to the owning top-level epic. Used to point a nested
+// task's git integration at the root epic branch (nesting is organizational;
+// every agent task still merges into the one epic branch).
+export async function rootEpicOf(job: Job): Promise<Job | null> {
+  let current: Job | null = job;
+  const seen = new Set<string>();
+  while (current && current.parentJobId && !seen.has(current.id)) {
+    seen.add(current.id);
+    const parent = await getJob(current.parentJobId);
+    if (!parent) break;
+    current = parent;
+  }
+  return current && current.kind === "epic" ? current : null;
+}
+
+// Materialize a hand-authored plan tree under an epic. Nodes may nest via
+// parentLocalId and carry an assignee; dependsOn references sibling localIds.
+// Callers must send nodes pre-ordered (each parent before its children).
+export interface PlanNodeInput {
+  localId: string; parentLocalId?: string; title: string; prompt?: string;
+  assignee?: JobAssignee; touchedPaths?: string[]; dependsOn?: string[];
+}
+
+export async function createSubtree(epicId: string, nodes: PlanNodeInput[]): Promise<string[]> {
+  const epic = await getJob(epicId);
+  if (!epic) throw new Error("epic not found");
+  const idByLocal = new Map<string, string>();
+  const inserted: string[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    const parentJobId = n.parentLocalId ? (idByLocal.get(n.parentLocalId) ?? epicId) : epicId;
+    const child = await createJob({
+      projectId: epic.projectId, title: n.title, prompt: n.prompt?.trim() || n.title,
+      kind: "task", parentJobId, priority: i, assignee: n.assignee ?? "agent",
+      touchedPaths: n.touchedPaths ?? [],
+    });
+    idByLocal.set(n.localId, child.id);
+    inserted.push(child.id);
+  }
+  for (const n of nodes) {
+    const id = idByLocal.get(n.localId)!;
+    const blockedBy = (n.dependsOn ?? []).map((d) => idByLocal.get(d)).filter((x): x is string => Boolean(x));
+    if (blockedBy.length) await patchJob(id, { blockedBy });
+  }
+  return inserted;
+}
+
 /** Stage a planned epic. `status` is "plan_review" when the epic opted into the
  *  approval gate (guided create), or "delegating" to build immediately. */
 export async function setDelegatorPlan(
@@ -531,14 +609,16 @@ export async function listDelegationState(): Promise<EpicState[]> {
   const epics = await listJobsByStatus("delegating");
   const out: EpicState[] = [];
   for (const epic of epics) {
-    out.push({ epic, children: await childrenOf(epic.id) });
+    // Full subtree: AI epics are flat (descendants == direct children) while
+    // manual plans may nest arbitrarily deep.
+    out.push({ epic, children: await descendantsOf(epic.id) });
   }
   return out;
 }
 
 export async function cancelEpic(id: string): Promise<void> {
   const now = Date.now();
-  for (const c of await childrenOf(id)) {
+  for (const c of await descendantsOf(id)) {
     if (c.status !== "completed" && c.status !== "cancelled" && c.status !== "failed") {
       await patchJob(c.id, { status: "cancelled", completedAt: now });
     }
