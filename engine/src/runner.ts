@@ -454,7 +454,7 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
       // completions can't cause non-fast-forward push rejections.
       await withPushLock(project.localPath, async () =>
         commitAndPushDirect(worktreePath, `feat: ${title}\n\nAutomated by Factory`, project.defaultBranch));
-      await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
+      await updateStatus(jobId, "completed", { touchedPaths: changedFiles, mergedToMain: true });
       log(jobId, `Merged to ${project.defaultBranch}.`);
     }
     log(jobId, "Job completed successfully.");
