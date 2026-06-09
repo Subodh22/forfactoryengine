@@ -148,6 +148,26 @@ export function useChildren(epicId: string): Job[] {
   );
 }
 
+/** Every descendant of a job at any depth — used for subtree progress rollups. */
+export function useDescendants(rootId: string): Job[] {
+  const { jobs } = useFactory();
+  return useMemo(() => {
+    const byParent = new Map<string, Job[]>();
+    for (const j of jobs) {
+      const arr = byParent.get(j.parentJobId);
+      if (arr) arr.push(j); else byParent.set(j.parentJobId, [j]);
+    }
+    const out: Job[] = [];
+    const stack = [...(byParent.get(rootId) ?? [])];
+    while (stack.length) {
+      const j = stack.shift()!;
+      out.push(j);
+      stack.push(...(byParent.get(j.id) ?? []));
+    }
+    return out;
+  }, [jobs, rootId]);
+}
+
 /** A job's terminal output. The persisted log is fetched on open (so finished
  *  jobs and reloads replay full history), then live chunks are tailed while the
  *  job is running (`live`). Subscribing only after the backfill resolves avoids

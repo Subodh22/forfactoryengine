@@ -1,8 +1,9 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
-import { Paperclip, Play, Monitor } from "lucide-react";
+import { Paperclip, Play, Monitor, MessageSquare, ListTree } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
+import { PlanBuilder } from "@/components/PlanBuilder";
 import { useFactory, useProject } from "@/lib/data";
 import { createJob } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function ChatPanel({ projectId, onJobCreated }: Props) {
+  const [mode, setMode] = useState<"describe" | "plan">("describe");
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [autoRun, setAutoRun] = useState(true);
@@ -92,6 +94,24 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
 
   return (
     <div ref={dropRef} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+      <div className="flex gap-0 mb-3 border-2 border-ink w-max">
+        <button
+          onClick={() => setMode("describe")}
+          className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 transition-colors ${mode === "describe" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
+        >
+          <MessageSquare className="w-3 h-3" /> Describe
+        </button>
+        <button
+          onClick={() => setMode("plan")}
+          className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 transition-colors border-l-2 border-ink ${mode === "plan" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
+        >
+          <ListTree className="w-3 h-3" /> Plan myself
+        </button>
+      </div>
+
+      {mode === "plan" ? (
+        <PlanBuilder projectId={projectId} onCreated={onJobCreated} />
+      ) : (
       <div className="bg-paper border-4 border-ink brutal-shadow grid-bg">
         <div className="flex justify-between items-center px-5 py-4 border-b-4 border-ink bg-paper">
           <b className="font-display uppercase text-[15px]">New Job — {project?.name ?? "…"}</b>
@@ -168,7 +188,10 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
           </button>
         </div>
       </div>
-      <p className="font-data text-[10px] text-muted mt-3.5 uppercase text-right">or paste / drag-drop · Cmd+Enter to send</p>
+      )}
+      {mode === "describe" && (
+        <p className="font-data text-[10px] text-muted mt-3.5 uppercase text-right">or paste / drag-drop · Cmd+Enter to send</p>
+      )}
     </div>
   );
 }
