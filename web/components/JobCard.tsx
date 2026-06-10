@@ -39,7 +39,7 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
   return (
     <>
       <div
-        className="bg-paper border-[3px] border-ink p-3 cursor-pointer brutal-shadow-sm hover:-translate-x-px hover:-translate-y-px hover:shadow-[6px_6px_0_var(--ink)] transition-all group"
+        className={`p-3 cursor-pointer brutal-shadow-sm hover:-translate-x-px hover:-translate-y-px hover:shadow-[6px_6px_0_var(--ink)] transition-all group border-[3px] ${job.mergedToMain ? "bg-[#1f7a3d]/10 border-[#1f7a3d]" : "bg-paper border-ink"}`}
         onClick={() => onSelect?.(job.id)}
       >
         <div className="flex items-start justify-between gap-2 mb-2">

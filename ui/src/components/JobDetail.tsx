@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, GitMerge } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, pushToMain } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -58,6 +58,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [pushing, setPushing] = useState(false);
 
   const [redoOpen, setRedoOpen] = useState(false);
   const [redoPrompt, setRedoPrompt] = useState("");
@@ -171,6 +172,19 @@ export function JobDetail({ jobId, onRedo }: Props) {
       toast.success("Added to prompt");
     } finally {
       setAddingPrompt(false);
+    }
+  }
+
+  async function handlePushToMain() {
+    if (pushing) return;
+    setPushing(true);
+    try {
+      await pushToMain(jobId);
+      toast.success("Pushed to main");
+    } catch (err) {
+      toast.error(String(err instanceof Error ? err.message : err) || "Push to main failed");
+    } finally {
+      setPushing(false);
     }
   }
 
@@ -314,7 +328,12 @@ export function JobDetail({ jobId, onRedo }: Props) {
           <form onSubmit={handleReply} className="flex gap-2">
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
+            {job.branch && !job.mergedToMain && (
+              <button type="button" onClick={handlePushToMain} disabled={pushing} className="px-2 py-2 bg-[#1f7a3d] border-2 border-[#1f7a3d] text-concrete hover:bg-[#166b30] transition-colors flex-shrink-0 disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1" title="Push to main"><GitMerge className="w-3.5 h-3.5" />{pushing ? "Pushing…" : "Push to Main"}</button>
+            )}
+            {job.mergedToMain && (
+              <span className="px-2 py-2 bg-[#1f7a3d]/20 border-2 border-[#1f7a3d] text-[#1f7a3d] flex-shrink-0 font-data text-[10px] uppercase flex items-center gap-1"><GitMerge className="w-3.5 h-3.5" />Merged</span>
+            )}
             <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={isPending ? "Add to prompt… (paste screenshots)" : isWaiting ? "Reply to Claude… (paste screenshots)" : isRunning ? "Queue a message… (paste screenshots)" : "Message Claude… (paste screenshots)"} onPaste={onPaste} className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow" autoFocus={isWaiting} />
             <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-3 py-2 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><Send className="w-3 h-3" />{sending ? "…" : "Send"}</button>
           </form>

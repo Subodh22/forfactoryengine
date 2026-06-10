@@ -275,6 +275,17 @@ export function pushBranchToDefault(epicWorktreePath: string, defaultBranch: str
   }
 }
 
+/** Push a job's local branch onto the default branch on origin. Fetches first
+ *  so the push is against the latest remote state. Throws on conflict. */
+export function pushJobToMain(repoPath: string, jobBranch: string, defaultBranch: string) {
+  const repo = resolveRepo(repoPath);
+  git(["fetch", "origin", defaultBranch], repo);
+  const push = git(["push", "origin", `${jobBranch}:${defaultBranch}`], repo);
+  if (push.status !== 0) {
+    throw new Error(`Push to ${defaultBranch} failed: ${push.stderr || push.stdout}`);
+  }
+}
+
 /** Delete a local branch (used to tidy up an epic branch after finalize). */
 export function deleteBranch(repoPath: string, branch: string) {
   try {

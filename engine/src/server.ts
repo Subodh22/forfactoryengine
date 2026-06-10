@@ -7,12 +7,13 @@ import { fileURLToPath } from "node:url";
 import {
   listJobs, getJob, createJob, childrenOf, listProjects, getProject, createProject,
   updateProject, removeProject, removeJob, redoJob, appendPrompt, requeueJob, cancelEpic,
-  getTodayStats, getSetting, setSetting, type JobKind, type JobEffort, type JobStatus,
+  getTodayStats, getSetting, setSetting, patchJob, type JobKind, type JobEffort, type JobStatus,
 } from "./db";
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
 import { readOutput, clearOutput } from "./output-log";
+import { pushJobToMain } from "./agent/worktree";
 import { scheduleDelegationCheck } from "./delegator-scheduler";
 import { runTerminalCommand, killTerminal } from "./terminal";
 import { getClaudeUsage } from "./usage";
@@ -375,6 +376,22 @@ export function startServer(port: number): http.Server {
           if (!text && !images.length) return sendJson(res, 400, { error: "text or images required" });
           const accepted = await deliverReply(id, text, images);
           return accepted ? sendJson(res, 202, { ok: true }) : sendJson(res, 409, { error: "no live session for this job" });
+        }
+        if (method === "POST" && action === "push-to-main") {
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "job not found" });
+          if (!job.branch) return sendJson(res, 400, { error: "job has no branch" });
+          const project = await getProject(job.projectId);
+          if (!project) return sendJson(res, 404, { error: "project not found" });
+          try {
+            pushJobToMain(project.localPath, job.branch, project.defaultBranch);
+            await patchJob(id, { mergedToMain: true });
+            const updated = await getJob(id);
+            if (updated) broadcast({ type: "job.updated", job: updated });
+            return sendJson(res, 200, updated);
+          } catch (err) {
+            return sendJson(res, 500, { error: String((err as Error).message ?? err) });
+          }
         }
       }
 

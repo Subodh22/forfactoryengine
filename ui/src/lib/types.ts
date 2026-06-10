@@ -42,6 +42,7 @@ export interface Job {
   delegatorPlan: string;
   model: string;
   effort: "low" | "medium" | "high" | "max" | "";
+  mergedToMain: boolean;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;

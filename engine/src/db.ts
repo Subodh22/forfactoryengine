@@ -68,6 +68,7 @@ export interface Job {
   delegatorPlan: string;
   model: string;
   effort: JobEffort;
+  mergedToMain: boolean;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
@@ -151,6 +152,7 @@ export async function initSchema(): Promise<void> {
     ["cost_usd", "REAL NOT NULL DEFAULT 0"],
     ["started_at", "INTEGER NOT NULL DEFAULT 0"],
     ["completed_at", "INTEGER NOT NULL DEFAULT 0"],
+    ["merged_to_main", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [col, def] of jobCols) {
     try { await db.execute(`ALTER TABLE jobs ADD COLUMN ${col} ${def}`); } catch { /* exists */ }
@@ -297,6 +299,7 @@ function rowToJob(r: Row): Job {
     delegatorPlan: String(r.delegator_plan ?? ""),
     model: String(r.model ?? ""),
     effort: String(r.effort ?? "") as JobEffort,
+    mergedToMain: Boolean(Number(r.merged_to_main ?? 0)),
     inputTokens: Number(r.input_tokens ?? 0),
     outputTokens: Number(r.output_tokens ?? 0),
     costUsd: Number(r.cost_usd ?? 0),
@@ -355,6 +358,7 @@ export async function createJob(input: {
     delegatorPlan: "",
     model: input.model ?? "",
     effort: input.effort ?? "",
+    mergedToMain: false,
     inputTokens: 0,
     outputTokens: 0,
     costUsd: 0,
@@ -379,7 +383,7 @@ const JOB_COLUMNS: Record<string, string> = {
   prNumber: "pr_number", error: "error", worktreePath: "worktree_path", sessionId: "session_id",
   delegatorPlan: "delegator_plan", priority: "priority", startedAt: "started_at",
   completedAt: "completed_at", inputTokens: "input_tokens", outputTokens: "output_tokens",
-  costUsd: "cost_usd",
+  costUsd: "cost_usd", mergedToMain: "merged_to_main",
 };
 const JOB_JSON_COLUMNS: Record<string, string> = {
   images: "images", touchedPaths: "touched_paths", blockedBy: "blocked_by",
@@ -401,7 +405,7 @@ export async function patchJob(
     const col = JOB_COLUMNS[k];
     if (!col) continue;
     sets.push(`${col} = ?`);
-    args.push(v as string | number);
+    args.push(typeof v === "boolean" ? (v ? 1 : 0) : v as string | number);
   }
   if (!sets.length) return;
   args.push(id);

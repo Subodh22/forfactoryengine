@@ -38,6 +38,9 @@ export const removeJob = (id: string) => api(`/api/jobs/${id}`, { method: "DELET
 export const sendReply = (id: string, text: string, images: string[]) =>
   api(`/api/jobs/${id}/reply`, { method: "POST", body: JSON.stringify({ text, images }) });
 
+export const pushToMain = (id: string) =>
+  api<Job>(`/api/jobs/${id}/push-to-main`, { method: "POST" });
+
 // ── Projects ─────────────────────────────────────────────────────────────────
 export interface CreateProjectInput {
   name: string;
