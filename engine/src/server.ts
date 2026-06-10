@@ -293,6 +293,7 @@ export function startServer(port: number): http.Server {
         // Epics must always be queued so the worker plans & splits them.
         const wantsRun = !manual && (b.autoRun === true || b.status === "queued" || kind === "epic");
         const job = await createJob({
+          id: typeof b.id === "string" && b.id ? b.id : undefined, // client-provided id for optimistic UI
           projectId, title, prompt,
           images: Array.isArray(b.images) ? (b.images as string[]) : [],
           status: manual ? "delegating" : (wantsRun ? "queued" : "pending"),

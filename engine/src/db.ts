@@ -344,6 +344,7 @@ export async function childrenOf(parentJobId: string): Promise<Job[]> {
 }
 
 export async function createJob(input: {
+  id?: string;
   projectId: string; title: string; prompt: string;
   images?: string[]; status?: JobStatus; kind?: JobKind; parentJobId?: string;
   priority?: number; touchedPaths?: string[]; blockedBy?: string[];
@@ -351,7 +352,7 @@ export async function createJob(input: {
   assignee?: JobAssignee; delegatorPlan?: string;
 }): Promise<Job> {
   const job: Job = {
-    id: crypto.randomUUID(),
+    id: input.id || crypto.randomUUID(),
     projectId: input.projectId,
     title: input.title,
     prompt: input.prompt,
@@ -579,6 +580,9 @@ export interface PlanNodeInput {
   // An explicit existing parent id — used by the live list to append a single
   // task under any existing task. Falls back to parentLocalId, then the epic.
   parentJobId?: string;
+  // A client-provided job id, so an optimistic UI row keeps the same id after
+  // the server confirms (no temp→real swap / remount).
+  id?: string;
 }
 
 export async function createSubtree(epicId: string, nodes: PlanNodeInput[]): Promise<string[]> {
@@ -592,7 +596,7 @@ export async function createSubtree(epicId: string, nodes: PlanNodeInput[]): Pro
       ? (idByLocal.get(n.parentLocalId) ?? epicId)
       : (n.parentJobId ?? epicId);
     const child = await createJob({
-      projectId: epic.projectId, title: n.title, prompt: n.prompt?.trim() || n.title,
+      id: n.id, projectId: epic.projectId, title: n.title, prompt: n.prompt?.trim() || n.title,
       kind: "task", parentJobId, priority: typeof n.priority === "number" ? n.priority : i,
       assignee: n.assignee ?? "agent", touchedPaths: n.touchedPaths ?? [],
     });
