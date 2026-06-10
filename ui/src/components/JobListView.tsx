@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Plus, Bot, Hand, Check, Play, RotateCcw, Loader2, ChevronDown, ChevronRight,
-  ArrowUpRight, Trash2,
+  ArrowUpRight, Trash2, Paperclip, Monitor,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useFactory, useJobs } from "@/lib/data";
@@ -9,14 +9,16 @@ import {
   createJob, addTask, patchJob, setAssignee, setTaskDone, queueJob, requeueJob,
   removeJob, removeJobCascade, trackCreate,
 } from "@/lib/mutations";
+import { uploadFiles } from "@/lib/api";
+import { AttachmentPreview } from "./AttachmentPreview";
 import type { Job } from "@/lib/types";
 
 // A fully-formed local Job for an optimistic row — shown instantly, saved in the
 // background. Carries the same id the server will use (client-provided), so the
 // row never remounts when the create confirms.
-function optimisticJob(id: string, projectId: string, parentJobId: string, priority: number, assignee: Job["assignee"], title: string): Job {
+function optimisticJob(id: string, projectId: string, parentJobId: string, priority: number, assignee: Job["assignee"], title: string, images: string[] = []): Job {
   return {
-    id, projectId, title, prompt: title, images: [], status: "pending", kind: "task",
+    id, projectId, title, prompt: title, images, status: "pending", kind: "task",
     parentJobId, priority, touchedPaths: [], blockedBy: [], assignee,
     worktreePath: "", branch: "", prUrl: "", prNumber: 0, error: "", sessionId: "",
     delegatorPlan: "", needsApproval: false, model: "", effort: "",
@@ -114,17 +116,18 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
   // the background. parentJobId null = a top-level task; otherwise a subtask.
   const createOptimistic = useCallback((
     parentJobId: string | null, priority: number,
-    opts?: { title?: string; assignee?: Job["assignee"]; focus?: boolean },
+    opts?: { title?: string; assignee?: Job["assignee"]; focus?: boolean; images?: string[] },
   ) => {
     const id = uid();
     const title = opts?.title ?? "";
     const assignee = opts?.assignee ?? "agent";
-    addJob(optimisticJob(id, projectId, parentJobId ?? "", priority, assignee, title));
+    const images = opts?.images ?? [];
+    addJob(optimisticJob(id, projectId, parentJobId ?? "", priority, assignee, title, images));
     if (parentJobId) setExpanded((e) => new Set(e).add(parentJobId));
     if (opts?.focus !== false) setPendingFocusId(id);
     const req = parentJobId
       ? addTask(parentJobId, { localId: id, id, title, assignee, parentJobId, priority })
-      : createJob({ id, projectId, title, prompt: title, kind: "task" });
+      : createJob({ id, projectId, title, prompt: title, kind: "task", images });
     trackCreate(id, req);
     req.catch(() => { dropJob(id); toast.error("Could not add the task"); });
     return id;
@@ -189,7 +192,7 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
             {isOpen && (
               <div className="divide-y divide-ink/10">
                 {rows.map((job) => <JobRow key={job.id} job={job} depth={0} ctx={ctx} />)}
-                {g.key === "pending" && <QuickAdd onAdd={(title) => createOptimistic(null, 50, { title, focus: false })} />}
+                {g.key === "pending" && <QuickAdd onAdd={(title, images) => createOptimistic(null, 50, { title, images, focus: false })} />}
               </div>
             )}
           </div>
@@ -199,29 +202,73 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
   );
 }
 
-function QuickAdd({ onAdd }: { onAdd: (title: string) => void }) {
+function QuickAdd({ onAdd }: { onAdd: (title: string, images: string[]) => void }) {
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = useCallback(async (files: FileList | File[]) => {
+    const { images, skipped } = await uploadFiles(files);
+    setAttachments((prev) => [...prev, ...images]);
+    if (skipped.length) toast.error(`Too large to attach: ${skipped.join(", ")}`);
+  }, []);
+
+  const captureScreen = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      await video.play();
+      await new Promise((r) => requestAnimationFrame(r));
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d")!.drawImage(video, 0, 0);
+      track.stop();
+      setAttachments((prev) => [...prev, canvas.toDataURL("image/png")]);
+    } catch { /* cancelled */ }
+  }, []);
 
   function add() {
     const title = text.trim();
-    if (!title) return;
-    onAdd(title);        // optimistic — fires instantly, no await
+    if (!title && attachments.length === 0) return;
+    onAdd(title || "Untitled task", attachments); // optimistic — fires instantly
     setText("");
+    setAttachments([]);
     inputRef.current?.focus();
   }
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5">
-      <Plus className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-      <input
-        ref={inputRef}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-        placeholder="Add task — type and press Enter"
-        className="flex-1 min-w-0 bg-transparent font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none"
-      />
+    <div
+      onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
+      onDragOver={(e) => e.preventDefault()}
+    >
+      {attachments.length > 0 && (
+        <div className="flex gap-2 flex-wrap px-4 pt-2">
+          {attachments.map((src, i) => (
+            <AttachmentPreview key={i} src={src} size={40} onRemove={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} />
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2 px-4 py-2.5">
+        <Plus className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+        <input
+          ref={inputRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          onPaste={(e) => { const f = Array.from(e.clipboardData.files); if (f.length) { e.preventDefault(); addFiles(f); } }}
+          placeholder="Add task — type, paste images, press Enter"
+          className="flex-1 min-w-0 bg-transparent font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none"
+        />
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button className="p-1 text-muted hover:text-ink transition-colors" onClick={() => fileRef.current?.click()} title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
+          <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
+          <button className="p-1 text-muted hover:text-ink transition-colors" onClick={captureScreen} title="Screenshot"><Monitor className="w-3.5 h-3.5" /></button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -295,6 +342,7 @@ function JobRow({ job, depth, ctx }: { job: Job; depth: number; ctx: RowCtx }) {
           placeholder={depth === 0 ? "Task name…" : "Subtask name…"}
           className={`flex-1 min-w-0 bg-transparent font-mono text-[13px] focus:outline-none ${isDone ? "line-through text-muted" : "text-ink"}`}
         />
+        {job.images.length > 0 && <span className="flex-shrink-0 font-data text-[9px] uppercase text-muted">{job.images.length} img</span>}
         {hasKids && <span className="flex-shrink-0 font-data text-[10px] text-muted">{kids.filter((k) => k.status === "completed").length}/{kids.length}</span>}
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
           <button onClick={() => setAssignee(job.id, isHuman ? "agent" : "human")} title={isHuman ? "Hand to the agent" : "Do it myself"} className="text-muted hover:text-ink transition-colors">
