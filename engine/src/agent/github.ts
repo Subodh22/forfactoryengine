@@ -41,8 +41,18 @@ export async function fetchUserRepos(token: string): Promise<RepoSummary[]> {
 export async function createPR(
   token: string, owner: string, repo: string, head: string, base: string, title: string, body: string,
 ): Promise<{ url: string; number: number }> {
-  const { data } = await octo(token).pulls.create({ owner, repo, head, base, title, body });
-  return { url: data.html_url, number: data.number };
+  try {
+    const { data } = await octo(token).pulls.create({ owner, repo, head, base, title, body });
+    return { url: data.html_url, number: data.number };
+  } catch (err: unknown) {
+    const e = err as { status?: number; message?: string };
+    if (e.status === 422 && /pull request already exists/i.test(e.message ?? "")) {
+      // PR already open for this branch — find and return it
+      const { data: prs } = await octo(token).pulls.list({ owner, repo, head: `${owner}:${head}`, base, state: "open" });
+      if (prs.length > 0) return { url: prs[0]!.html_url, number: prs[0]!.number };
+    }
+    throw err;
+  }
 }
 
 export interface CreatedRepo { fullName: string; defaultBranch: string; htmlUrl: string }
