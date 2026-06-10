@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, ChevronRight, ChevronDown, Terminal } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
@@ -26,16 +26,158 @@ function parseLine(raw: string): { type: LineType; text: string } {
   return { type: "text", text: raw };
 }
 
-function lineClass(type: LineType): string {
-  switch (type) {
-    case "tool": return "text-cyan-400";
-    case "bash": return "text-amber-300";
-    case "stderr": return "text-[#6b8a6b]";
-    case "factory": return "text-[#3bd16f]";
-    case "error": return "text-red-400";
-    case "divider": return "text-[#4a4a44]";
-    case "text": return "text-[#cfe8cf]";
+type OutputBlock =
+  | { kind: "text"; content: string }
+  | { kind: "tools"; items: { type: LineType; text: string }[] }
+  | { kind: "factory"; text: string }
+  | { kind: "error"; text: string };
+
+function parseBlocks(raw: string): OutputBlock[] {
+  const lines = raw.split("\n");
+  const blocks: OutputBlock[] = [];
+  let textBuf: string[] = [];
+  let toolBuf: { type: LineType; text: string }[] = [];
+
+  function flushText() {
+    const joined = textBuf.join("\n").trim();
+    if (joined) blocks.push({ kind: "text", content: joined });
+    textBuf = [];
   }
+  function flushTools() {
+    if (toolBuf.length) blocks.push({ kind: "tools", items: [...toolBuf] });
+    toolBuf = [];
+  }
+
+  for (const line of lines) {
+    if (!line) { textBuf.push(""); continue; }
+    const parsed = parseLine(line);
+    if (parsed.type === "tool" || parsed.type === "bash" || parsed.type === "stderr") {
+      flushText();
+      toolBuf.push(parsed);
+    } else if (parsed.type === "factory") {
+      flushText(); flushTools();
+      blocks.push({ kind: "factory", text: parsed.text });
+    } else if (parsed.type === "error") {
+      flushText(); flushTools();
+      blocks.push({ kind: "error", text: parsed.text });
+    } else if (parsed.type === "divider") {
+      flushText(); flushTools();
+    } else {
+      flushTools();
+      textBuf.push(parsed.text);
+    }
+  }
+  flushText();
+  flushTools();
+  return blocks;
+}
+
+function renderInline(text: string): (string | JSX.Element)[] {
+  const parts: (string | JSX.Element)[] = [];
+  const re = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let ki = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    const m = match[0];
+    if (m.startsWith("`")) {
+      parts.push(<code key={ki++} className="bg-[#1a1a17] text-[#e8c87a] px-1.5 py-0.5 text-[12px] font-mono">{m.slice(1, -1)}</code>);
+    } else {
+      parts.push(<strong key={ki++} className="text-[#e8e4d8] font-bold">{m.slice(2, -2)}</strong>);
+    }
+    last = match.index + m.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function renderTextBlock(content: string) {
+  const sections: JSX.Element[] = [];
+  const codeBlockRe = /```(\w*)\n([\s\S]*?)```/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let si = 0;
+
+  while ((match = codeBlockRe.exec(content)) !== null) {
+    if (match.index > last) {
+      sections.push(<span key={si++}>{renderParagraphs(content.slice(last, match.index))}</span>);
+    }
+    sections.push(
+      <pre key={si++} className="bg-[#0d0d0b] border border-[#2a2722] px-4 py-3 my-2 overflow-x-auto text-[12px] font-mono text-[#c8c4b8] leading-relaxed">
+        {match[2]}
+      </pre>
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < content.length) {
+    sections.push(<span key={si++}>{renderParagraphs(content.slice(last))}</span>);
+  }
+  return sections;
+}
+
+function renderParagraphs(text: string) {
+  const paragraphs = text.split(/\n\n+/).filter((p) => p.trim());
+  return paragraphs.map((para, pi) => {
+    const trimmed = para.trim();
+    if (/^#{1,3}\s/.test(trimmed)) {
+      const level = trimmed.match(/^(#{1,3})\s/)![1].length;
+      const heading = trimmed.replace(/^#{1,3}\s+/, "");
+      const cls = level === 1 ? "text-[15px] font-bold" : level === 2 ? "text-[14px] font-bold" : "text-[13px] font-bold";
+      return <div key={pi} className={`${cls} text-[#e8e4d8] mt-4 mb-2`}>{renderInline(heading)}</div>;
+    }
+    const listLines = trimmed.split("\n");
+    const isUnordered = listLines.every((l) => /^\s*[-*]\s/.test(l) || !l.trim());
+    const isOrdered = listLines.every((l) => /^\s*\d+[.)]\s/.test(l) || !l.trim());
+    if (isUnordered) {
+      return (
+        <ul key={pi} className="my-2 space-y-1">
+          {listLines.filter((l) => l.trim()).map((l, li) => (
+            <li key={li} className="flex gap-2 text-[13px] leading-[1.7]">
+              <span className="text-[#6b8a6b] mt-0.5 flex-shrink-0">-</span>
+              <span>{renderInline(l.replace(/^\s*[-*]\s+/, ""))}</span>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    if (isOrdered) {
+      return (
+        <ol key={pi} className="my-2 space-y-1">
+          {listLines.filter((l) => l.trim()).map((l, li) => (
+            <li key={li} className="flex gap-2 text-[13px] leading-[1.7]">
+              <span className="text-[#6b8a6b] mt-0.5 flex-shrink-0 tabular-nums w-4 text-right">{li + 1}.</span>
+              <span>{renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}</span>
+            </li>
+          ))}
+        </ol>
+      );
+    }
+    return <p key={pi} className="my-2 text-[13px] leading-[1.7]">{renderInline(trimmed)}</p>;
+  });
+}
+
+function ToolGroup({ items }: { items: { type: LineType; text: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const label = items.length === 1 ? items[0].text.trim() : `${items.length} actions`;
+  return (
+    <div className="my-1.5">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 text-[11px] font-data text-[#6b8a6b] hover:text-[#9bb89b] transition-colors group">
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <Terminal className="w-3 h-3" />
+        <span className="uppercase tracking-wide">{label}</span>
+      </button>
+      {open && (
+        <div className="ml-5 mt-1 border-l border-[#2a2722] pl-3 space-y-0.5">
+          {items.map((item, i) => (
+            <div key={i} className={`text-[11px] font-mono ${item.type === "bash" ? "text-amber-300/70" : item.type === "stderr" ? "text-[#4a5a4a]" : "text-cyan-400/70"}`}>
+              {item.text}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function JobDetail({ jobId, onRedo }: Props) {
@@ -114,9 +256,10 @@ export function JobDetail({ jobId, onRedo }: Props) {
   }
   const silentSecs = isRunning ? Math.floor((now - lastOutputAt.current) / 1000) : 0;
 
-  const lines = output.split("\n").filter(Boolean);
-  const lastToolLine = [...lines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
+  const rawLines = output.split("\n").filter(Boolean);
+  const lastToolLine = [...rawLines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
   const activeTool = isRunning && lastToolLine ? lastToolLine.slice(7) : null;
+  const blocks = output ? parseBlocks(output) : [];
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [output, messages]);
 
@@ -264,18 +407,20 @@ export function JobDetail({ jobId, onRedo }: Props) {
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
-          {output ? (
-            <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
-              {output.split("\n").map((raw, i) => {
-                if (!raw) return <span key={i}>{"\n"}</span>;
-                const { type, text } = parseLine(raw);
-                return <span key={i} className={lineClass(type)}>{text}{"\n"}</span>;
+        <div className="flex-1 overflow-y-auto bg-ink px-6 py-5 min-h-0">
+          {blocks.length > 0 ? (
+            <div className="text-[#c8c4b8] max-w-[720px]">
+              {blocks.map((block, bi) => {
+                if (block.kind === "text") return <div key={bi}>{renderTextBlock(block.content)}</div>;
+                if (block.kind === "tools") return <ToolGroup key={bi} items={block.items} />;
+                if (block.kind === "factory") return <div key={bi} className="my-2 text-[11px] font-data text-[#3bd16f]">{block.text}</div>;
+                if (block.kind === "error") return <div key={bi} className="my-2 text-[12px] font-mono text-red-400">{block.text}</div>;
+                return null;
               })}
-              {isRunning && <span className="inline-block w-2 h-3.5 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60" />}
-            </pre>
+              {isRunning && <span className="inline-block w-2 h-4 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60 mt-2" />}
+            </div>
           ) : (
-            <p className="text-xs text-[#6b8a6b] italic font-mono">{job.status === "pending" ? "Waiting to start… click Run on the card" : "No output yet…"}</p>
+            <p className="text-[13px] text-[#6b8a6b] italic">{job.status === "pending" ? "Waiting to start..." : "No output yet..."}</p>
           )}
           <div ref={bottomRef} />
         </div>
