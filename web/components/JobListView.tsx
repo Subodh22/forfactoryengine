@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Plus, Bot, Hand, Check, Play, RotateCcw, Loader2, ChevronDown, ChevronRight,
-  ArrowUpRight, Trash2, CornerDownRight,
+  ArrowUpRight, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useFactory, useJobs } from "@/lib/data";
@@ -204,47 +204,27 @@ function QuickAdd({ quickCreate }: { quickCreate: (title: string, parentId: stri
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  // The task the next subtask nests under. Each subtask we create becomes the
-  // new anchor, so pressing the dropdown again makes a sub-subtask, and so on.
-  const anchor = useRef<string | null>(null);
 
-  async function addTopLevel() {
+  async function add() {
     const title = text.trim();
     if (!title || busy) return;
     setBusy(true);
     const job = await quickCreate(title, null);
     setBusy(false);
-    if (job) { anchor.current = job.id; setText(""); inputRef.current?.focus(); }
-  }
-
-  // Dropdown → create a subtask under the last task (deepening each press).
-  async function addSubtask() {
-    if (busy) return;
-    const title = text.trim();
-    setBusy(true);
-    // No anchor yet → behave like a normal add so the first item exists.
-    const parent = anchor.current;
-    const job = parent ? await quickCreate(title, parent) : await quickCreate(title, null);
-    setBusy(false);
-    if (job) { anchor.current = job.id; setText(""); inputRef.current?.focus(); }
+    if (job) { setText(""); inputRef.current?.focus(); }
   }
 
   return (
-    <div className="flex items-center gap-1.5 px-4 py-2.5">
+    <div className="flex items-center gap-2 px-4 py-2.5">
       <Plus className="w-3.5 h-3.5 text-muted flex-shrink-0" />
       <input
         ref={inputRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopLevel(); } }}
-        placeholder="Add task — Enter for a task, ▾ for a subtask"
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+        placeholder="Add task — type and press Enter"
         className="flex-1 min-w-0 bg-transparent font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none"
       />
-      <button
-        onClick={addSubtask}
-        title={anchor.current ? "Add a subtask under the last task" : "Add a subtask"}
-        className="flex-shrink-0 flex items-center gap-0.5 border-2 border-ink/40 text-muted hover:bg-ink hover:text-paper hover:border-ink transition-colors px-1.5 py-0.5 font-data text-[9px] uppercase"
-      >Sub <ChevronDown className="w-3 h-3" /></button>
     </div>
   );
 }
@@ -303,7 +283,10 @@ function JobRow({ job, depth, ctx }: { job: Job; depth: number; ctx: RowCtx }) {
             {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
         ) : (
-          <span className="flex-shrink-0 w-3.5">{depth > 0 && <CornerDownRight className="w-3 h-3 text-muted/50" />}</span>
+          // ClickUp-style: a faint triangle on a leaf row creates a subtask.
+          <button onClick={() => ctx.addSubtask(job)} className="flex-shrink-0 text-muted/40 hover:text-ink transition-colors" title="Create subtask">
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
         )}
         <StatusCircle job={job} isHuman={isHuman} isDone={isDone} onClick={onCircle} />
         <input
