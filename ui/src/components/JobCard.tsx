@@ -50,6 +50,12 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
               </span>
             )}
             <StatusBadge status={job.status} />
+            {job.mergedToMain && (
+              <span className="w-2.5 h-2.5 rounded-full bg-[#1f7a3d] flex-shrink-0" title="Merged to main" />
+            )}
+            {!job.mergedToMain && job.prUrl && (
+              <span className="w-2.5 h-2.5 rounded-full bg-[#e0a32e] flex-shrink-0" title="Pushed to PR" />
+            )}
           </div>
         </div>
 

@@ -1,13 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Plus, X, Menu } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { KanbanBoard } from "@/components/KanbanBoard";
+import { ProjectBoard } from "@/components/ProjectBoard";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { JobDetail } from "@/components/JobDetail";
 import { AgentsGrid } from "@/components/AgentsGrid";
-import { TerminalPanel } from "@/components/TerminalPanel";
+import { TerminalTabs } from "@/components/TerminalTabs";
 import { CreateProject } from "@/components/CreateProject";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { EnvPanel } from "@/components/EnvPanel";
@@ -91,6 +91,11 @@ export default function Home() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [tab, setTab] = useState("board");
   const [feedOpen, setFeedOpen] = useState(false);
+  // Latches once the terminal is first opened; after that we keep it mounted
+  // (hidden on other tabs) so its sessions/PTYs survive — but don't spawn shells
+  // until the user actually visits the terminal.
+  const openedTerminal = useRef(false);
+  if (tab === "terminal") openedTerminal.current = true;
 
   if (needToken) return <TokenGate />;
   if (!ready) return <div className="h-screen flex items-center justify-center font-data text-xs uppercase text-muted">Loading…</div>;
@@ -206,7 +211,7 @@ export default function Home() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 sm:p-12">
-            {tab === "board" && <KanbanBoard projectId={projectId} onSelectJob={setSelectedJob} />}
+            {tab === "board" && <ProjectBoard projectId={projectId} onSelectJob={setSelectedJob} />}
             {tab === "agents" && <AgentsGrid projectId={projectId} />}
             {tab === "chat" && projectId && (
               <div className="max-w-[760px] mx-auto"><ChatPanel projectId={projectId} onJobCreated={(id) => { setSelectedJob(id); setTab("board"); }} /></div>
@@ -225,7 +230,12 @@ export default function Home() {
                 <p className="font-data text-[11px] uppercase text-muted">Choose a repo from the top bar to get started</p>
               </div>
             )}
-            {tab === "terminal" && project && <TerminalPanel project={{ name: project.name, localPath: project.localPath }} />}
+            {/* Kept mounted (just hidden) on other tabs so terminal sessions + PTYs survive tab switches. */}
+            {openedTerminal.current && project && (
+              <div className="h-full" style={{ display: tab === "terminal" ? "block" : "none" }}>
+                <TerminalTabs project={{ name: project.name, localPath: project.localPath }} />
+              </div>
+            )}
             {tab === "terminal" && !project && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
                 <p className="font-display uppercase text-sm text-ink">Select a project to open a terminal</p>

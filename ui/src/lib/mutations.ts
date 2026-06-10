@@ -1,11 +1,12 @@
 import { api } from "./api";
-import type { Job, Project, JobStatus, Repo } from "./types";
+import type { Job, Project, JobStatus, JobAssignee, Repo } from "./types";
 
 // All mutations go through the engine REST API. State updates arrive back over
 // the WebSocket (job.created / job.updated / project.* events), so callers don't
 // need to touch local state — they just await and, where useful, use the return.
 
 export interface CreateJobInput {
+  id?: string;             // client-provided id so optimistic rows keep their id
   projectId: string;
   title: string;
   prompt: string;
@@ -14,13 +15,74 @@ export interface CreateJobInput {
   model?: string;
   effort?: string;
   autoRun?: boolean;
+  needsApproval?: boolean; // guided create: clarify + plan approval before building
+  manual?: boolean;        // manual plan: hand-authored epic, no AI planner / queue
+  assignee?: JobAssignee;
 }
 
 export const createJob = (input: CreateJobInput) =>
   api<Job>("/api/jobs", { method: "POST", body: JSON.stringify(input) });
 
+// ── Optimistic-create gating ─────────────────────────────────────────────────
+// When a row is created optimistically (its id exists in the UI before the
+// server confirms), an immediate edit/delete could race ahead of the create and
+// 404. Track in-flight creates by id; mutations on that id wait for it first.
+const pendingCreates = new Map<string, Promise<unknown>>();
+export function trackCreate(id: string, p: Promise<unknown>): void {
+  const tracked = p.finally(() => { if (pendingCreates.get(id) === tracked) pendingCreates.delete(id); });
+  pendingCreates.set(id, tracked);
+}
+const afterCreate = (id: string) => pendingCreates.get(id)?.catch(() => {}) ?? Promise.resolve();
+
+// One node of a hand-authored plan tree. `localId` is a client-side id used to
+// wire `parentLocalId` (nesting) and `dependsOn` (run-after) before the real job
+// ids exist. Nodes must be sent pre-ordered (each parent before its children).
+export interface PlanNode {
+  localId: string;
+  id?: string;
+  parentLocalId?: string;
+  parentJobId?: string;
+  title: string;
+  prompt?: string;
+  assignee?: JobAssignee;
+  dependsOn?: string[];
+  priority?: number;
+}
+
+export const createChildren = (epicId: string, nodes: PlanNode[]) =>
+  api<Job[]>(`/api/jobs/${epicId}/children`, { method: "POST", body: JSON.stringify({ nodes }) });
+
+// Add a single task live to a plan and return the created job.
+export const addTask = (epicId: string, node: PlanNode) =>
+  createChildren(epicId, [node]).then((jobs) => jobs[0]);
+
+// Tick a manual task off (or reopen it).
+export const setTaskDone = (id: string, done: boolean) =>
+  setJobStatus(id, done ? "completed" : "pending");
+
+// Edit a task in place — reassign between Claude/you, rename, re-prompt, or
+// restructure (re-parent for indent/outdent, reorder via priority).
+export const patchJob = (
+  id: string,
+  fields: { title?: string; prompt?: string; assignee?: JobAssignee; parentJobId?: string; priority?: number },
+) => afterCreate(id).then(() => api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(fields) }));
+
+export const setAssignee = (id: string, assignee: JobAssignee) => patchJob(id, { assignee });
+
+// Indent/outdent: move a task under a new parent at a given sort position.
+export const reparentTask = (id: string, parentJobId: string, priority: number) =>
+  patchJob(id, { parentJobId, priority });
+
+// Reorder a task within its sibling group.
+export const reorderTask = (id: string, priority: number) => patchJob(id, { priority });
+
+// Finalize a manual plan: push completed agent work (PR/merge) or mark a pure
+// human checklist done. Plans never auto-finalize — this is explicit.
+export const finishPlan = (id: string) =>
+  api<Job>(`/api/jobs/${id}/finish`, { method: "POST" });
+
 export const setJobStatus = (id: string, status: JobStatus, extra: Partial<Job> = {}) =>
-  api<Job>(`/api/jobs/${id}/status`, { method: "POST", body: JSON.stringify({ status, ...extra }) });
+  afterCreate(id).then(() => api<Job>(`/api/jobs/${id}/status`, { method: "POST", body: JSON.stringify({ status, ...extra }) }));
 
 export const queueJob = (id: string) => api<Job>(`/api/jobs/${id}/queue`, { method: "POST" });
 export const requeueJob = (id: string) => api<Job>(`/api/jobs/${id}/requeue`, { method: "POST" });
@@ -33,10 +95,15 @@ export const appendPrompt = (id: string, text: string, images?: string[]) =>
 
 export const cancelJob = (id: string) => api<Job>(`/api/jobs/${id}/cancel`, { method: "POST" });
 export const cancelEpic = (id: string) => api<Job>(`/api/jobs/${id}/cancel-epic`, { method: "POST" });
-export const removeJob = (id: string) => api(`/api/jobs/${id}`, { method: "DELETE" });
+export const removeJob = (id: string) => afterCreate(id).then(() => api(`/api/jobs/${id}`, { method: "DELETE" }));
+// Delete a task and its whole subtree (no DB cascade exists server-side).
+export const removeJobCascade = (id: string) => afterCreate(id).then(() => api(`/api/jobs/${id}?cascade=1`, { method: "DELETE" }));
 
 export const sendReply = (id: string, text: string, images: string[]) =>
   api(`/api/jobs/${id}/reply`, { method: "POST", body: JSON.stringify({ text, images }) });
+
+export const approvePlan = (id: string) =>
+  api<Job>(`/api/jobs/${id}/approve-plan`, { method: "POST" });
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 export interface CreateProjectInput {
@@ -90,9 +157,4 @@ export const getEnv = (localPath: string) =>
 export const saveEnv = (localPath: string, content: string) =>
   api("/api/projects/env", { method: "POST", body: JSON.stringify({ localPath, content }) });
 
-// ── Terminal ─────────────────────────────────────────────────────────────
-export const terminalExec = (sessionId: string, cwd: string, command: string) =>
-  api("/api/terminal/exec", { method: "POST", body: JSON.stringify({ sessionId, cwd, command }) });
-
-export const terminalKill = (sessionId: string) =>
-  api("/api/terminal/kill", { method: "POST", body: JSON.stringify({ sessionId }) });
+// Terminal is now an interactive PTY over the /term WebSocket (see TerminalPanel).

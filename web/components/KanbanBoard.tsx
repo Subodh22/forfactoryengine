@@ -18,6 +18,8 @@ interface Props {
   onSelectJob: (id: string) => void;
 }
 
+// Pure board grid. The List/Board toggle and the list view live in ProjectBoard
+// + JobListView (the single source of the toggle).
 export function KanbanBoard({ projectId, onSelectJob }: Props) {
   const allJobs = useJobs(projectId);
   const topLevel = allJobs.filter((j) => !j.parentJobId);

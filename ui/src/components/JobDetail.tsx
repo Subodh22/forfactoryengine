@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, Play, ChevronDown, ChevronUp, ChevronRight, Square, Terminal } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, approvePlan, cancelJob, cancelEpic } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -25,21 +25,164 @@ function parseLine(raw: string): { type: LineType; text: string } {
   return { type: "text", text: raw };
 }
 
-function lineClass(type: LineType): string {
-  switch (type) {
-    case "tool": return "text-cyan-400";
-    case "bash": return "text-amber-300";
-    case "stderr": return "text-[#6b8a6b]";
-    case "factory": return "text-[#3bd16f]";
-    case "error": return "text-red-400";
-    case "divider": return "text-[#4a4a44]";
-    case "text": return "text-[#cfe8cf]";
+type OutputBlock =
+  | { kind: "text"; content: string }
+  | { kind: "tools"; items: { type: LineType; text: string }[] }
+  | { kind: "factory"; text: string }
+  | { kind: "error"; text: string };
+
+function parseBlocks(raw: string): OutputBlock[] {
+  const lines = raw.split("\n");
+  const blocks: OutputBlock[] = [];
+  let textBuf: string[] = [];
+  let toolBuf: { type: LineType; text: string }[] = [];
+
+  function flushText() {
+    const joined = textBuf.join("\n").trim();
+    if (joined) blocks.push({ kind: "text", content: joined });
+    textBuf = [];
   }
+  function flushTools() {
+    if (toolBuf.length) blocks.push({ kind: "tools", items: [...toolBuf] });
+    toolBuf = [];
+  }
+
+  for (const line of lines) {
+    if (!line) { textBuf.push(""); continue; }
+    const parsed = parseLine(line);
+    if (parsed.type === "tool" || parsed.type === "bash" || parsed.type === "stderr") {
+      flushText();
+      toolBuf.push(parsed);
+    } else if (parsed.type === "factory") {
+      flushText(); flushTools();
+      blocks.push({ kind: "factory", text: parsed.text });
+    } else if (parsed.type === "error") {
+      flushText(); flushTools();
+      blocks.push({ kind: "error", text: parsed.text });
+    } else if (parsed.type === "divider") {
+      flushText(); flushTools();
+    } else {
+      flushTools();
+      textBuf.push(parsed.text);
+    }
+  }
+  flushText();
+  flushTools();
+  return blocks;
+}
+
+function renderInline(text: string): (string | JSX.Element)[] {
+  const parts: (string | JSX.Element)[] = [];
+  const re = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let ki = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    const m = match[0];
+    if (m.startsWith("`")) {
+      parts.push(<code key={ki++} className="bg-[#1a1a17] text-[#e8c87a] px-1.5 py-0.5 text-[12px] font-mono">{m.slice(1, -1)}</code>);
+    } else {
+      parts.push(<strong key={ki++} className="text-[#e8e4d8] font-bold">{m.slice(2, -2)}</strong>);
+    }
+    last = match.index + m.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function renderTextBlock(content: string) {
+  const sections: JSX.Element[] = [];
+  const codeBlockRe = /```(\w*)\n([\s\S]*?)```/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let si = 0;
+
+  while ((match = codeBlockRe.exec(content)) !== null) {
+    if (match.index > last) {
+      sections.push(<span key={si++}>{renderParagraphs(content.slice(last, match.index))}</span>);
+    }
+    sections.push(
+      <pre key={si++} className="bg-[#0d0d0b] border border-[#2a2722] px-4 py-3 my-2 overflow-x-auto text-[12px] font-mono text-[#c8c4b8] leading-relaxed">
+        {match[2]}
+      </pre>
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < content.length) {
+    sections.push(<span key={si++}>{renderParagraphs(content.slice(last))}</span>);
+  }
+  return sections;
+}
+
+function renderParagraphs(text: string) {
+  const paragraphs = text.split(/\n\n+/).filter((p) => p.trim());
+  return paragraphs.map((para, pi) => {
+    const trimmed = para.trim();
+    if (/^#{1,3}\s/.test(trimmed)) {
+      const level = trimmed.match(/^(#{1,3})\s/)![1].length;
+      const heading = trimmed.replace(/^#{1,3}\s+/, "");
+      const cls = level === 1 ? "text-[15px] font-bold" : level === 2 ? "text-[14px] font-bold" : "text-[13px] font-bold";
+      return <div key={pi} className={`${cls} text-[#e8e4d8] mt-4 mb-2`}>{renderInline(heading)}</div>;
+    }
+    const listLines = trimmed.split("\n");
+    const isUnordered = listLines.every((l) => /^\s*[-*]\s/.test(l) || !l.trim());
+    const isOrdered = listLines.every((l) => /^\s*\d+[.)]\s/.test(l) || !l.trim());
+    if (isUnordered) {
+      return (
+        <ul key={pi} className="my-2 space-y-1">
+          {listLines.filter((l) => l.trim()).map((l, li) => (
+            <li key={li} className="flex gap-2 text-[13px] leading-[1.7]">
+              <span className="text-[#6b8a6b] mt-0.5 flex-shrink-0">-</span>
+              <span>{renderInline(l.replace(/^\s*[-*]\s+/, ""))}</span>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    if (isOrdered) {
+      return (
+        <ol key={pi} className="my-2 space-y-1">
+          {listLines.filter((l) => l.trim()).map((l, li) => (
+            <li key={li} className="flex gap-2 text-[13px] leading-[1.7]">
+              <span className="text-[#6b8a6b] mt-0.5 flex-shrink-0 tabular-nums w-4 text-right">{li + 1}.</span>
+              <span>{renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}</span>
+            </li>
+          ))}
+        </ol>
+      );
+    }
+    return <p key={pi} className="my-2 text-[13px] leading-[1.7]">{renderInline(trimmed)}</p>;
+  });
+}
+
+function ToolGroup({ items }: { items: { type: LineType; text: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const label = items.length === 1 ? items[0].text.trim() : `${items.length} actions`;
+  return (
+    <div className="my-1.5">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 text-[11px] font-data text-[#6b8a6b] hover:text-[#9bb89b] transition-colors group">
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <Terminal className="w-3 h-3" />
+        <span className="uppercase tracking-wide">{label}</span>
+      </button>
+      {open && (
+        <div className="ml-5 mt-1 border-l border-[#2a2722] pl-3 space-y-0.5">
+          {items.map((item, i) => (
+            <div key={i} className={`text-[11px] font-mono ${item.type === "bash" ? "text-amber-300/70" : item.type === "stderr" ? "text-[#4a5a4a]" : "text-cyan-400/70"}`}>
+              {item.text}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function JobDetail({ jobId, onRedo }: Props) {
   const job = useJob(jobId);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const [promptDraft, setPromptDraft] = useState("");
   const [addingPrompt, setAddingPrompt] = useState(false);
@@ -47,23 +190,61 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   const isRunning = job?.status === "running";
   const isWaiting = job?.status === "waiting_for_input";
+  const isClarifying = job?.status === "clarifying";
+  const isPlanReview = job?.status === "plan_review";
   const isDelegating = job?.status === "delegating";
   const isEpic = job?.kind === "epic";
   const isPending = job?.status === "pending" || job?.status === "queued";
   const isFinished = job?.status === "completed" || job?.status === "failed" || job?.status === "cancelled";
-  const streamActive = isRunning || isWaiting || isDelegating;
+  const streamActive = isRunning || isWaiting || isClarifying || isDelegating;
 
   const output = useJobOutput(jobId, streamActive);
   const [messages, addMessage] = useJobChat(jobId, streamActive);
 
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [showError, setShowError] = useState(false);
+
+  async function handleApprove() {
+    if (approving) return;
+    setApproving(true);
+    try { await approvePlan(jobId); toast.success("Approved — agents are starting"); }
+    catch (err) { toast.error(String(err instanceof Error ? err.message : err) || "Could not approve"); }
+    finally { setApproving(false); }
+  }
+
+  const [activeTab, setActiveTab] = useState<"output" | "chat">("output");
+  const [unseenChat, setUnseenChat] = useState(false);
+  const [unseenOutput, setUnseenOutput] = useState(false);
+  const prevMessagesLen = useRef(messages.length);
+  const prevOutputLen2 = useRef(output.length);
+
+  useEffect(() => {
+    if (messages.length > prevMessagesLen.current && activeTab !== "chat") {
+      setUnseenChat(true);
+    }
+    prevMessagesLen.current = messages.length;
+  }, [messages.length, activeTab]);
+
+  useEffect(() => {
+    if (output.length > prevOutputLen2.current && activeTab !== "output") {
+      setUnseenOutput(true);
+    }
+    prevOutputLen2.current = output.length;
+  }, [output.length, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "chat") setUnseenChat(false);
+    if (activeTab === "output") setUnseenOutput(false);
+  }, [activeTab]);
 
   const [redoOpen, setRedoOpen] = useState(false);
   const [redoPrompt, setRedoPrompt] = useState("");
   const [redoImages, setRedoImages] = useState<string[]>([]);
   const [redoing, setRedoing] = useState(false);
   const redoFileInputRef = useRef<HTMLInputElement>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const addFiles = useCallback(async (files: FileList | File[], target: React.Dispatch<React.SetStateAction<string[]>> = setAttachedFiles) => {
@@ -113,13 +294,17 @@ export function JobDetail({ jobId, onRedo }: Props) {
   }
   const silentSecs = isRunning ? Math.floor((now - lastOutputAt.current) / 1000) : 0;
 
-  const lines = output.split("\n").filter(Boolean);
-  const lastToolLine = [...lines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
+  const rawLines = output.split("\n").filter(Boolean);
+  const lastToolLine = [...rawLines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
   const activeTool = isRunning && lastToolLine ? lastToolLine.slice(7) : null;
+  const blocks = output ? parseBlocks(output) : [];
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [output, messages]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [output, messages]);
 
-  const canChat = !!job && !isPending;
+  const canChat = !!job && !isPending && !isPlanReview;
 
   async function handleRedo(e: React.FormEvent) {
     e.preventDefault();
@@ -206,6 +391,27 @@ export function JobDetail({ jobId, onRedo }: Props) {
               <ExternalLink className="w-2.5 h-2.5" />View PR #{job.prNumber}
             </a>
           )}
+          {(isRunning || isWaiting || isDelegating || job?.status === "queued") && (
+            <button
+              onClick={async () => {
+                setCancelling(true);
+                try {
+                  if (isEpic) await cancelEpic(jobId);
+                  else await cancelJob(jobId);
+                  toast.success("Job cancelled");
+                } catch (err) {
+                  toast.error(String(err instanceof Error ? err.message : err) || "Failed to cancel");
+                } finally {
+                  setCancelling(false);
+                }
+              }}
+              disabled={cancelling}
+              className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border-2 border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete transition-colors disabled:opacity-40"
+              title="Cancel this job"
+            >
+              <Square className="w-2.5 h-2.5" />{cancelling ? "Cancelling…" : "Cancel"}
+            </button>
+          )}
           {isFinished && (
             <button onClick={() => setRedoOpen((o) => !o)} className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors" title="Re-run this job from scratch">
               <RotateCcw className="w-2.5 h-2.5" />Redo
@@ -242,7 +448,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
         )}
       </div>
 
-      {/* Terminal output */}
+      {/* Tabbed output / chat area */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         {isRunning && (
           <div className="h-1 w-full bg-[#2a2722] flex-shrink-0 overflow-hidden relative">
@@ -250,8 +456,16 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <div className={`absolute h-full w-1/3 ${isStuck ? "bg-red-500" : isThinking ? "bg-amber-500" : "bg-[#3bd16f]"}`} style={{ animation: "slide 2s linear infinite" }} />
           </div>
         )}
-        <div className="px-4 py-2 border-b-2 border-[#2a2722] flex items-center gap-2 flex-shrink-0 bg-ink">
-          <span className="font-data text-[10px] text-[#6b8a6b] tracking-widest uppercase flex-1">Agent Output</span>
+        <div className="px-4 py-0 border-b-2 border-[#2a2722] flex items-center gap-0 flex-shrink-0 bg-ink">
+          <button onClick={() => setActiveTab("output")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "output" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
+            Agent Output
+            {unseenOutput && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
+          </button>
+          <button onClick={() => setActiveTab("chat")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "chat" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
+            Chat
+            {unseenChat && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
+          </button>
+          <span className="flex-1" />
           {isRunning && isStuck ? (
             <span className="flex items-center gap-1.5 font-data text-[10px] text-red-400"><span className="w-1.5 h-1.5 bg-red-400 animate-pulse flex-shrink-0" />no output {silentSecs}s</span>
           ) : isRunning && isThinking ? (
@@ -263,43 +477,26 @@ export function JobDetail({ jobId, onRedo }: Props) {
           ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
-          {output ? (
-            <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
-              {output.split("\n").map((raw, i) => {
-                if (!raw) return <span key={i}>{"\n"}</span>;
-                const { type, text } = parseLine(raw);
-                return <span key={i} className={lineClass(type)}>{text}{"\n"}</span>;
+        <div className="flex-1 overflow-y-auto bg-ink px-6 py-5 min-h-0">
+          {blocks.length > 0 ? (
+            <div className="text-[#c8c4b8] max-w-[720px]">
+              {blocks.map((block, bi) => {
+                if (block.kind === "text") return <div key={bi}>{renderTextBlock(block.content)}</div>;
+                if (block.kind === "tools") return <ToolGroup key={bi} items={block.items} />;
+                if (block.kind === "factory") return <div key={bi} className="my-2 text-[11px] font-data text-[#3bd16f]">{block.text}</div>;
+                if (block.kind === "error") return <div key={bi} className="my-2 text-[12px] font-mono text-red-400">{block.text}</div>;
+                return null;
               })}
-              {isRunning && <span className="inline-block w-2 h-3.5 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60" />}
-            </pre>
+              {isRunning && <span className="inline-block w-2 h-4 bg-[#3bd16f] animate-pulse ml-0.5 align-middle opacity-60 mt-2" />}
+            </div>
           ) : (
-            <p className="text-xs text-[#6b8a6b] italic font-mono">{job.status === "pending" ? "Waiting to start… click Run on the card" : "No output yet…"}</p>
+            <p className="text-[13px] text-[#6b8a6b] italic">{job.status === "pending" ? "Waiting to start..." : "No output yet..."}</p>
           )}
           <div ref={bottomRef} />
         </div>
       </div>
 
       {isEpic && <DelegatorPanel epicId={jobId} />}
-
-      {messages.length > 0 && (
-        <div className="border-t-4 border-ink flex-shrink-0 max-h-64 overflow-y-auto bg-concrete">
-          <div className="px-4 py-2 border-b-2 border-ink"><span className="font-data text-[10px] text-muted tracking-widest uppercase">Chat</span></div>
-          <div className="p-4 space-y-3">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                <div className="font-data text-[10px] font-bold uppercase mt-0.5 flex-shrink-0 text-ink">{msg.role === "assistant" ? "Claude" : "You"}</div>
-                <div className={`text-xs px-3 py-2 max-w-[85%] whitespace-pre-wrap border-2 border-ink ${msg.role === "assistant" ? "bg-paper text-ink" : "bg-ink text-concrete"}`}>
-                  {msg.images && msg.images.length > 0 && (
-                    <div className="flex gap-1.5 flex-wrap mb-1.5">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
-                  )}
-                  {msg.text}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {canChat && (
         <div className={`border-t-4 p-3 flex-shrink-0 ${isWaiting ? "border-ink bg-[#b8860b]/15" : "border-ink bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
@@ -322,9 +519,16 @@ export function JobDetail({ jobId, onRedo }: Props) {
       )}
 
       {job.error && (
-        <div className="p-4 border-t-4 border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
-          <p className="font-data text-[10px] font-bold text-[#d6210f] mb-1 uppercase tracking-widest">Error</p>
-          <pre className="text-xs text-[#a8190b] font-mono whitespace-pre-wrap">{job.error}</pre>
+        <div className="border-t-4 border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
+          <button onClick={() => setShowError(v => !v)} className="w-full flex items-center justify-between px-4 py-2 font-data text-[10px] font-bold text-[#d6210f] uppercase tracking-widest hover:bg-[#d6210f]/10 transition-colors">
+            <span>Error</span>
+            {showError ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+          {showError && (
+            <div className="px-4 pb-4">
+              <pre className="text-xs text-[#a8190b] font-mono whitespace-pre-wrap">{job.error}</pre>
+            </div>
+          )}
         </div>
       )}
     </div>

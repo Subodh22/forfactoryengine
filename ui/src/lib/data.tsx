@@ -27,6 +27,7 @@ interface FactoryCtx {
   ghOAuth: boolean;
   setGhLogin: (s: string) => void;
   addJob: (job: Job) => void;
+  dropJob: (id: string) => void;
   onOutput: (jobId: string, cb: (chunk: string) => void) => () => void;
   onChat: (jobId: string, cb: (msg: ChatMsg) => void) => () => void;
   onTerm: (sessionId: string, cb: (text: string) => void) => () => void;
@@ -108,13 +109,17 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
   const addJob = useCallback((job: Job) => {
     setJobs((j) => (j.some((x) => x.id === job.id) ? j : [job, ...j]));
   }, []);
+  // Remove a job locally — used to roll back an optimistic create that failed.
+  const dropJob = useCallback((id: string) => {
+    setJobs((j) => j.filter((x) => x.id !== id));
+  }, []);
 
   const value = useMemo<FactoryCtx>(() => ({
-    ready, needToken, live, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob,
+    ready, needToken, live, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob, dropJob,
     onOutput: (jobId, cb) => addListener(outputListeners.current, jobId, cb),
     onChat: (jobId, cb) => addListener(chatListeners.current, jobId, cb),
     onTerm: (sessionId, cb) => addListener(termListeners.current, sessionId, cb),
-  }), [ready, needToken, live, projects, jobs, ghLogin, ghOAuth, addJob]);
+  }), [ready, needToken, live, projects, jobs, ghLogin, ghOAuth, addJob, dropJob]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -146,6 +151,26 @@ export function useChildren(epicId: string): Job[] {
     () => jobs.filter((j) => j.parentJobId === epicId).sort((a, b) => a.priority - b.priority),
     [jobs, epicId],
   );
+}
+
+/** Every descendant of a job at any depth — used for subtree progress rollups. */
+export function useDescendants(rootId: string): Job[] {
+  const { jobs } = useFactory();
+  return useMemo(() => {
+    const byParent = new Map<string, Job[]>();
+    for (const j of jobs) {
+      const arr = byParent.get(j.parentJobId);
+      if (arr) arr.push(j); else byParent.set(j.parentJobId, [j]);
+    }
+    const out: Job[] = [];
+    const stack = [...(byParent.get(rootId) ?? [])];
+    while (stack.length) {
+      const j = stack.shift()!;
+      out.push(j);
+      stack.push(...(byParent.get(j.id) ?? []));
+    }
+    return out;
+  }, [jobs, rootId]);
 }
 
 /** A job's terminal output. The persisted log is fetched on open (so finished
