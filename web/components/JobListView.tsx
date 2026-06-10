@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Plus, Bot, Hand, Check, Play, RotateCcw, Loader2, ChevronDown, ChevronRight,
-  ArrowUpRight, Trash2, Paperclip, Monitor,
+  ArrowUpRight, Trash2, Paperclip,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useFactory, useJobs } from "@/lib/data";
@@ -215,23 +215,6 @@ function QuickAdd({ onAdd }: { onAdd: (title: string, images: string[]) => void 
     if (skipped.length) toast.error(`Too large to attach: ${skipped.join(", ")}`);
   }, []);
 
-  const captureScreen = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const track = stream.getVideoTracks()[0];
-      const video = document.createElement("video");
-      video.srcObject = stream;
-      await video.play();
-      await new Promise((r) => requestAnimationFrame(r));
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext("2d")!.drawImage(video, 0, 0);
-      track.stop();
-      setAttachments((prev) => [...prev, canvas.toDataURL("image/png")]);
-    } catch { /* cancelled */ }
-  }, []);
-
   function add() {
     const title = text.trim();
     if (!title && attachments.length === 0) return;
@@ -267,7 +250,6 @@ function QuickAdd({ onAdd }: { onAdd: (title: string, images: string[]) => void 
         <div className="flex items-center gap-1 flex-shrink-0">
           <button className="p-1 text-muted hover:text-ink transition-colors" onClick={() => fileRef.current?.click()} title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
           <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
-          <button className="p-1 text-muted hover:text-ink transition-colors" onClick={captureScreen} title="Screenshot"><Monitor className="w-3.5 h-3.5" /></button>
         </div>
       </div>
     </div>
