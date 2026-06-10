@@ -7,6 +7,7 @@ const COLUMNS = [
   { key: "queued", label: "Queued", dot: "#b8860b" },
   { key: "running", label: "In Progress", dot: "#1f7a3d" },
   { key: "waiting_for_input", label: "Needs Reply", dot: "#d97706" },
+  { key: "ready_to_push", label: "Ready to Push", dot: "#2563eb" },
   { key: "completed", label: "Done", dot: "#1f7a3d" },
   { key: "failed", label: "Failed", dot: "#d6210f" },
   { key: "cancelled", label: "Cancelled", dot: "#6b675f" },
@@ -33,9 +34,12 @@ export function KanbanBoard({ projectId, onSelectJob }: Props) {
   const byStatus = Object.fromEntries(
     COLUMNS.map((col) => [
       col.key,
-      topLevel.filter((j) =>
-        col.key === "running" ? j.status === "running" || j.status === "delegating" : j.status === col.key,
-      ),
+      topLevel.filter((j) => {
+        if (col.key === "running") return j.status === "running" || j.status === "delegating";
+        if (col.key === "ready_to_push") return j.status === "completed" && !!j.prUrl;
+        if (col.key === "completed") return j.status === "completed" && !j.prUrl;
+        return j.status === col.key;
+      }),
     ]),
   );
 
