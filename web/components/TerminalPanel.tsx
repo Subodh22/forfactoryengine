@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal as TerminalIcon, Trash2, Square, CornerDownLeft } from "lucide-react";
 import { useFactory } from "@/lib/data";
-import { terminalExec, terminalKill } from "@/lib/mutations";
+import { terminalExec, terminalKill, terminalInput, terminalEof } from "@/lib/mutations";
 
 const EXIT_MARK = "\x00exit\x00";
 const STDERR_MARK = "\x00stderr\x00";
@@ -55,16 +55,27 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [entries]);
 
   async function run() {
-    const command = input.trim();
-    if (!command || running || !live) return;
-    if (command === "clear" || command === "cls") { setEntries([]); setInput(""); return; }
-    historyRef.current.push(command);
+    const text = input.trim();
+    if (!live) return;
+    if (text === "clear" || text === "cls") { setEntries([]); setInput(""); return; }
+
+    // While a command is running, send input to its stdin
+    if (running) {
+      const line = input;
+      setEntries((prev) => [...prev, { kind: "info", text: `> ${line}` }]);
+      setInput("");
+      try { await terminalInput(sessionId, line + "\n"); } catch { /* ignore */ }
+      return;
+    }
+
+    if (!text) return;
+    historyRef.current.push(text);
     setHistIdx(-1);
-    setEntries((prev) => [...prev, { kind: "cmd", text: command }]);
+    setEntries((prev) => [...prev, { kind: "cmd", text }]);
     setInput("");
     setRunning(true);
     try {
-      await terminalExec(sessionId, project.localPath, command);
+      await terminalExec(sessionId, project.localPath, text);
     } catch (err) {
       setEntries((prev) => [...prev, { kind: "err", text: `${(err as Error).message}\n` }]);
       setRunning(false);
@@ -75,16 +86,21 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
     try { await terminalKill(sessionId); } catch { /* ignore */ }
   }
 
+  async function sendEof() {
+    try { await terminalEof(sessionId); } catch { /* ignore */ }
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") { e.preventDefault(); run(); return; }
     if (e.key === "c" && e.ctrlKey && running) { e.preventDefault(); kill(); return; }
+    if (e.key === "d" && e.ctrlKey && running) { e.preventDefault(); sendEof(); return; }
     const hist = historyRef.current;
-    if (e.key === "ArrowUp" && hist.length) {
+    if (e.key === "ArrowUp" && hist.length && !running) {
       e.preventDefault();
       const next = histIdx === -1 ? hist.length - 1 : Math.max(0, histIdx - 1);
       setHistIdx(next); setInput(hist[next]);
     }
-    if (e.key === "ArrowDown" && histIdx !== -1) {
+    if (e.key === "ArrowDown" && histIdx !== -1 && !running) {
       e.preventDefault();
       const next = histIdx + 1;
       if (next >= hist.length) { setHistIdx(-1); setInput(""); }
@@ -129,10 +145,10 @@ export function TerminalPanel({ project }: { project: TerminalProject }) {
           spellCheck={false}
           autoCapitalize="off"
           autoComplete="off"
-          placeholder={live ? (running ? "running… (Ctrl+C to stop)" : "type a command and press Enter") : "connecting to engine…"}
+          placeholder={live ? (running ? "stdin input… (Ctrl+C stop, Ctrl+D EOF)" : "type a command and press Enter") : "connecting to engine…"}
           className="flex-1 bg-transparent outline-none font-mono text-[13px] text-[#e7e4dc] placeholder:text-[#6b8a6b] disabled:opacity-50"
         />
-        <button onClick={run} disabled={!live || running || !input.trim()} className="flex items-center gap-1 text-[#6b8a6b] hover:text-[#cfe8cf] disabled:opacity-30 transition-colors" title="Run (Enter)"><CornerDownLeft className="w-3.5 h-3.5" /></button>
+        <button onClick={run} disabled={!live || (!running && !input.trim())} className="flex items-center gap-1 text-[#6b8a6b] hover:text-[#cfe8cf] disabled:opacity-30 transition-colors" title="Run (Enter)"><CornerDownLeft className="w-3.5 h-3.5" /></button>
       </div>
     </div>
   );

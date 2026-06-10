@@ -96,3 +96,9 @@ export const terminalExec = (sessionId: string, cwd: string, command: string) =>
 
 export const terminalKill = (sessionId: string) =>
   api("/api/terminal/kill", { method: "POST", body: JSON.stringify({ sessionId }) });
+
+export const terminalInput = (sessionId: string, data: string) =>
+  api("/api/terminal/input", { method: "POST", body: JSON.stringify({ sessionId, data }) });
+
+export const terminalEof = (sessionId: string) =>
+  api("/api/terminal/input", { method: "POST", body: JSON.stringify({ sessionId, eof: true }) });

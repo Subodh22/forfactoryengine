@@ -14,7 +14,7 @@ import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
 import { readOutput, clearOutput } from "./output-log";
 import { scheduleDelegationCheck } from "./delegator-scheduler";
-import { runTerminalCommand, killTerminal } from "./terminal";
+import { runTerminalCommand, killTerminal, sendTerminalInput, closeTerminalStdin } from "./terminal";
 import { getClaudeUsage } from "./usage";
 import { checkAuth, authEnabled } from "./auth";
 import { getUser, fetchUserRepos, createRepo } from "./agent/github";
@@ -392,6 +392,19 @@ export function startServer(port: number): http.Server {
         const b = await readBody(req);
         const killed = killTerminal(String(b.sessionId ?? ""));
         return sendJson(res, 200, { ok: true, killed });
+      }
+      if (method === "POST" && pathname === "/api/terminal/input") {
+        const b = await readBody(req);
+        const sessionId = String(b.sessionId ?? "");
+        const data = String(b.data ?? "");
+        if (!sessionId) return sendJson(res, 400, { error: "sessionId required" });
+        const eof = b.eof === true;
+        if (eof) {
+          closeTerminalStdin(sessionId);
+          return sendJson(res, 200, { ok: true });
+        }
+        const sent = sendTerminalInput(sessionId, data);
+        return sendJson(res, 200, { ok: true, sent });
       }
 
       if (method === "GET") return serveStatic(pathname, res);
