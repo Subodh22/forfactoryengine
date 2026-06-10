@@ -2,14 +2,16 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Plus, Bot, Hand, Check, Play, RotateCcw, Loader2, ChevronDown, ChevronRight,
-  ArrowUpRight, Trash2,
+  ArrowUpRight, Trash2, Paperclip, Monitor,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AttachmentPreview } from "@/components/AttachmentPreview";
 import { useFactory, useJobs } from "@/lib/data";
 import {
   createJob, addTask, patchJob, setAssignee, setTaskDone, queueJob, requeueJob,
   removeJob, removeJobCascade, trackCreate,
 } from "@/lib/mutations";
+import { uploadFiles } from "@/lib/api";
 import type { Job } from "@/lib/types";
 
 // A fully-formed local Job for an optimistic row — shown instantly, saved in the
@@ -115,7 +117,7 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
   // the background. parentJobId null = a top-level task; otherwise a subtask.
   const createOptimistic = useCallback((
     parentJobId: string | null, priority: number,
-    opts?: { title?: string; assignee?: Job["assignee"]; focus?: boolean },
+    opts?: { title?: string; assignee?: Job["assignee"]; focus?: boolean; images?: string[] },
   ) => {
     const id = uid();
     const title = opts?.title ?? "";
@@ -125,7 +127,7 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
     if (opts?.focus !== false) setPendingFocusId(id);
     const req = parentJobId
       ? addTask(parentJobId, { localId: id, id, title, assignee, parentJobId, priority })
-      : createJob({ id, projectId, title, prompt: title, kind: "task" });
+      : createJob({ id, projectId, title, prompt: title, kind: "task", images: opts?.images });
     trackCreate(id, req);
     req.catch(() => { dropJob(id); toast.error("Could not add the task"); });
     return id;
@@ -190,7 +192,7 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
             {isOpen && (
               <div className="divide-y divide-ink/10">
                 {rows.map((job) => <JobRow key={job.id} job={job} depth={0} ctx={ctx} />)}
-                {g.key === "pending" && <QuickAdd onAdd={(title) => createOptimistic(null, 50, { title, focus: false })} />}
+                {g.key === "pending" && <QuickAdd onAdd={(title, images) => createOptimistic(null, 50, { title, focus: false, images })} />}
               </div>
             )}
           </div>
@@ -200,29 +202,81 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
   );
 }
 
-function QuickAdd({ onAdd }: { onAdd: (title: string) => void }) {
+function QuickAdd({ onAdd }: { onAdd: (title: string, images?: string[]) => void }) {
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const addFiles = useCallback(async (files: FileList | File[]) => {
+    const { images, skipped } = await uploadFiles(files);
+    setAttachments((prev) => [...prev, ...images]);
+    if (skipped.length) toast.error(`Too large to attach: ${skipped.join(", ")}`);
+  }, []);
+
+  const captureScreen = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      await video.play();
+      await new Promise((r) => requestAnimationFrame(r));
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d")!.drawImage(video, 0, 0);
+      track.stop();
+      setAttachments((prev) => [...prev, canvas.toDataURL("image/png")]);
+    } catch { /* cancelled */ }
+  }, []);
 
   function add() {
     const title = text.trim();
     if (!title) return;
-    onAdd(title);        // optimistic — fires instantly, no await
+    onAdd(title, attachments.length ? attachments : undefined);
     setText("");
+    setAttachments([]);
     inputRef.current?.focus();
   }
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5">
-      <Plus className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-      <input
-        ref={inputRef}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-        placeholder="Add task — type and press Enter"
-        className="flex-1 min-w-0 bg-transparent font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none"
-      />
+    <div
+      ref={dropRef}
+      onDrop={(e) => { e.preventDefault(); dropRef.current?.classList.remove("bg-paper"); addFiles(e.dataTransfer.files); }}
+      onDragOver={(e) => { e.preventDefault(); dropRef.current?.classList.add("bg-paper"); }}
+      onDragLeave={() => dropRef.current?.classList.remove("bg-paper")}
+      className="transition-colors"
+    >
+      {attachments.length > 0 && (
+        <div className="flex gap-2 flex-wrap px-4 pt-2">
+          {attachments.map((src, i) => (
+            <AttachmentPreview key={i} src={src} size={40} onRemove={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} />
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2 px-4 py-2.5">
+        <Plus className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+        <input
+          ref={inputRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          onPaste={(e) => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); addFiles(files); } }}
+          placeholder="Add task — type and press Enter (paste or drop files)"
+          className="flex-1 min-w-0 bg-transparent font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none"
+        />
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button className="p-1 text-muted hover:text-ink transition-colors" onClick={() => fileRef.current?.click()} title="Attach files">
+            <Paperclip className="w-3.5 h-3.5" />
+          </button>
+          <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
+          <button className="p-1 text-muted hover:text-ink transition-colors" onClick={captureScreen} title="Screenshot">
+            <Monitor className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -318,7 +372,9 @@ function StatusCircle({ job, isHuman, isDone, onClick }: { job: Job; isHuman: bo
   let inner: React.ReactNode = null;
   let cls = "border-ink bg-paper hover:bg-concrete";
   let title = isHuman ? "Mark done" : "Run task";
-  if (isDone) { cls = "border-ink bg-ink text-paper"; inner = <Check className="w-3 h-3" />; title = "Done — click to reopen"; }
+  if (isDone && job.mergedToMain) { cls = "border-[#1f7a3d] bg-[#1f7a3d] text-paper"; inner = <Check className="w-3 h-3" />; title = "Merged to main — click to reopen"; }
+  else if (isDone && job.prUrl) { cls = "border-[#e0a32e] bg-[#e0a32e] text-paper"; inner = <Check className="w-3 h-3" />; title = "Pushed to PR — click to reopen"; }
+  else if (isDone) { cls = "border-ink bg-ink text-paper"; inner = <Check className="w-3 h-3" />; title = "Done — click to reopen"; }
   else if (running) { cls = "border-ink bg-paper text-ink"; inner = <Loader2 className="w-3 h-3 animate-spin" />; title = "Running…"; }
   else if (failed) { cls = "border-[#d6210f] bg-paper text-[#d6210f]"; inner = <RotateCcw className="w-3 h-3" />; title = "Failed — click to retry"; }
   else if (!isHuman) { inner = <Play className="w-2.5 h-2.5 text-muted" />; }
