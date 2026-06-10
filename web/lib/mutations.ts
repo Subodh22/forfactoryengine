@@ -7,6 +7,7 @@ import type { Job, Project, JobStatus, JobAssignee, Repo } from "./types";
 // need to touch local state — they just await and, where useful, use the return.
 
 export interface CreateJobInput {
+  id?: string;             // client-provided id so optimistic rows keep their id
   projectId: string;
   title: string;
   prompt: string;
@@ -23,11 +24,23 @@ export interface CreateJobInput {
 export const createJob = (input: CreateJobInput) =>
   api<Job>("/api/jobs", { method: "POST", body: JSON.stringify(input) });
 
+// ── Optimistic-create gating ─────────────────────────────────────────────────
+// When a row is created optimistically (its id exists in the UI before the
+// server confirms), an immediate edit/delete could race ahead of the create and
+// 404. Track in-flight creates by id; mutations on that id wait for it first.
+const pendingCreates = new Map<string, Promise<unknown>>();
+export function trackCreate(id: string, p: Promise<unknown>): void {
+  const tracked = p.finally(() => { if (pendingCreates.get(id) === tracked) pendingCreates.delete(id); });
+  pendingCreates.set(id, tracked);
+}
+const afterCreate = (id: string) => pendingCreates.get(id)?.catch(() => {}) ?? Promise.resolve();
+
 // One node of a hand-authored plan tree. `localId` is a client-side id used to
 // wire `parentLocalId` (nesting) and `dependsOn` (run-after) before the real job
 // ids exist. Nodes must be sent pre-ordered (each parent before its children).
 export interface PlanNode {
   localId: string;
+  id?: string;
   parentLocalId?: string;
   parentJobId?: string;
   title: string;
@@ -53,7 +66,7 @@ export const setTaskDone = (id: string, done: boolean) =>
 export const patchJob = (
   id: string,
   fields: { title?: string; prompt?: string; assignee?: JobAssignee; parentJobId?: string; priority?: number },
-) => api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(fields) });
+) => afterCreate(id).then(() => api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(fields) }));
 
 export const setAssignee = (id: string, assignee: JobAssignee) => patchJob(id, { assignee });
 
@@ -70,7 +83,7 @@ export const finishPlan = (id: string) =>
   api<Job>(`/api/jobs/${id}/finish`, { method: "POST" });
 
 export const setJobStatus = (id: string, status: JobStatus, extra: Partial<Job> = {}) =>
-  api<Job>(`/api/jobs/${id}/status`, { method: "POST", body: JSON.stringify({ status, ...extra }) });
+  afterCreate(id).then(() => api<Job>(`/api/jobs/${id}/status`, { method: "POST", body: JSON.stringify({ status, ...extra }) }));
 
 export const queueJob = (id: string) => api<Job>(`/api/jobs/${id}/queue`, { method: "POST" });
 export const requeueJob = (id: string) => api<Job>(`/api/jobs/${id}/requeue`, { method: "POST" });
@@ -83,9 +96,9 @@ export const appendPrompt = (id: string, text: string, images?: string[]) =>
 
 export const cancelJob = (id: string) => api<Job>(`/api/jobs/${id}/cancel`, { method: "POST" });
 export const cancelEpic = (id: string) => api<Job>(`/api/jobs/${id}/cancel-epic`, { method: "POST" });
-export const removeJob = (id: string) => api(`/api/jobs/${id}`, { method: "DELETE" });
+export const removeJob = (id: string) => afterCreate(id).then(() => api(`/api/jobs/${id}`, { method: "DELETE" }));
 // Delete a task and its whole subtree (no DB cascade exists server-side).
-export const removeJobCascade = (id: string) => api(`/api/jobs/${id}?cascade=1`, { method: "DELETE" });
+export const removeJobCascade = (id: string) => afterCreate(id).then(() => api(`/api/jobs/${id}?cascade=1`, { method: "DELETE" }));
 
 export const sendReply = (id: string, text: string, images: string[]) =>
   api(`/api/jobs/${id}/reply`, { method: "POST", body: JSON.stringify({ text, images }) });

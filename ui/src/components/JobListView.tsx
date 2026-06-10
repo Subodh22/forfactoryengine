@@ -7,9 +7,23 @@ import { toast } from "sonner";
 import { useFactory, useJobs } from "@/lib/data";
 import {
   createJob, addTask, patchJob, setAssignee, setTaskDone, queueJob, requeueJob,
-  removeJob, removeJobCascade,
+  removeJob, removeJobCascade, trackCreate,
 } from "@/lib/mutations";
 import type { Job } from "@/lib/types";
+
+// A fully-formed local Job for an optimistic row — shown instantly, saved in the
+// background. Carries the same id the server will use (client-provided), so the
+// row never remounts when the create confirms.
+function optimisticJob(id: string, projectId: string, parentJobId: string, priority: number, assignee: Job["assignee"], title: string): Job {
+  return {
+    id, projectId, title, prompt: title, images: [], status: "pending", kind: "task",
+    parentJobId, priority, touchedPaths: [], blockedBy: [], assignee,
+    worktreePath: "", branch: "", prUrl: "", prNumber: 0, error: "", sessionId: "",
+    delegatorPlan: "", needsApproval: false, model: "", effort: "",
+    inputTokens: 0, outputTokens: 0, costUsd: 0, mergedToMain: false,
+    startedAt: 0, completedAt: 0, createdAt: Date.now(),
+  };
+}
 
 const GAP = 1000;
 const uid = () => crypto.randomUUID();
@@ -72,7 +86,7 @@ interface RowCtx {
 }
 
 export function JobListView({ projectId, onSelectJob }: { projectId: string; onSelectJob: (id: string) => void }) {
-  const { addJob } = useFactory();
+  const { addJob, dropJob } = useFactory();
   const jobs = useJobs(projectId);
   const topLevel = jobs.filter((j) => !j.parentJobId).sort((a, b) => a.createdAt - b.createdAt);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -96,33 +110,38 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
     return sibs.length ? sibs[sibs.length - 1].priority + GAP : GAP;
   }
 
-  const addSubtask = useCallback(async (parent: Job) => {
-    try {
-      const job = await addTask(parent.id, {
-        localId: uid(), title: "", assignee: "agent", parentJobId: parent.id, priority: priorityForAppend(parent.id),
-      });
-      if (job) {
-        addJob(job);
-        setExpanded((e) => new Set(e).add(parent.id));
-        setPendingFocusId(job.id);
-      }
-    } catch { toast.error("Could not add the subtask"); }
-  }, [addJob, childrenOf]);
+  // Create a row optimistically: it appears + focuses instantly, then saves in
+  // the background. parentJobId null = a top-level task; otherwise a subtask.
+  const createOptimistic = useCallback((
+    parentJobId: string | null, priority: number,
+    opts?: { title?: string; assignee?: Job["assignee"]; focus?: boolean },
+  ) => {
+    const id = uid();
+    const title = opts?.title ?? "";
+    const assignee = opts?.assignee ?? "agent";
+    addJob(optimisticJob(id, projectId, parentJobId ?? "", priority, assignee, title));
+    if (parentJobId) setExpanded((e) => new Set(e).add(parentJobId));
+    if (opts?.focus !== false) setPendingFocusId(id);
+    const req = parentJobId
+      ? addTask(parentJobId, { localId: id, id, title, assignee, parentJobId, priority })
+      : createJob({ id, projectId, title, prompt: title, kind: "task" });
+    trackCreate(id, req);
+    req.catch(() => { dropJob(id); toast.error("Could not add the task"); });
+    return id;
+  }, [projectId, addJob, dropJob]);
 
-  const addSibling = useCallback(async (sib: Job) => {
-    const parentId = sib.parentJobId;
-    const sibs = childrenOf(parentId);
+  const addSubtask = useCallback((parent: Job) => {
+    createOptimistic(parent.id, priorityForAppend(parent.id));
+  }, [createOptimistic, childrenOf]);
+
+  const addSibling = useCallback((sib: Job) => {
+    const sibs = childrenOf(sib.parentJobId);
     const idx = sibs.findIndex((s) => s.id === sib.id);
     const cur = sibs[idx];
     const next = sibs[idx + 1];
     const priority = next ? Math.floor((cur.priority + next.priority) / 2) : cur.priority + GAP;
-    try {
-      const job = await addTask(parentId, {
-        localId: uid(), title: "", assignee: sib.assignee || "agent", parentJobId: parentId, priority,
-      });
-      if (job) { addJob(job); setPendingFocusId(job.id); }
-    } catch { toast.error("Could not add the subtask"); }
-  }, [addJob, childrenOf]);
+    createOptimistic(sib.parentJobId, priority, { assignee: sib.assignee || "agent" });
+  }, [createOptimistic, childrenOf]);
 
   const deleteEmpty = useCallback(async (job: Job) => {
     if (childrenOf(job.id).length) return;
@@ -142,25 +161,6 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
       await removeJob(job.id);
     }
   }, [childrenOf]);
-
-  // Quick-add create: top-level task (parentId null) or a subtask under an
-  // existing task. Returns the created job so the quick-add can chain deeper.
-  const quickCreate = useCallback(async (title: string, parentId: string | null): Promise<Job | null> => {
-    try {
-      let job: Job | null;
-      if (parentId) {
-        job = await addTask(parentId, {
-          localId: uid(), title, assignee: "agent", parentJobId: parentId, priority: priorityForAppend(parentId),
-        });
-        if (job) setExpanded((e) => new Set(e).add(parentId));
-      } else {
-        if (!title.trim()) return null; // top-level needs a name (engine requires a prompt)
-        job = await createJob({ projectId, title, prompt: title, kind: "task" });
-      }
-      if (job) addJob(job);
-      return job ?? null;
-    } catch { toast.error("Could not add the task"); return null; }
-  }, [projectId, addJob, childrenOf]);
 
   const ctx: RowCtx = {
     childrenOf, expanded, toggleExpand,
@@ -189,7 +189,7 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
             {isOpen && (
               <div className="divide-y divide-ink/10">
                 {rows.map((job) => <JobRow key={job.id} job={job} depth={0} ctx={ctx} />)}
-                {g.key === "pending" && <QuickAdd quickCreate={quickCreate} />}
+                {g.key === "pending" && <QuickAdd onAdd={(title) => createOptimistic(null, 50, { title, focus: false })} />}
               </div>
             )}
           </div>
@@ -199,18 +199,16 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
   );
 }
 
-function QuickAdd({ quickCreate }: { quickCreate: (title: string, parentId: string | null) => Promise<Job | null> }) {
+function QuickAdd({ onAdd }: { onAdd: (title: string) => void }) {
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function add() {
+  function add() {
     const title = text.trim();
-    if (!title || busy) return;
-    setBusy(true);
-    const job = await quickCreate(title, null);
-    setBusy(false);
-    if (job) { setText(""); inputRef.current?.focus(); }
+    if (!title) return;
+    onAdd(title);        // optimistic — fires instantly, no await
+    setText("");
+    inputRef.current?.focus();
   }
 
   return (
