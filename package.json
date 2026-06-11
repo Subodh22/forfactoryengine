@@ -2,6 +2,9 @@
   "name": "factory-engine-monorepo",
   "private": true,
   "version": "0.0.1",
+  "engines": {
+    "node": ">=20"
+  },
   "description": "Factory — local-first AI coding automation. Engine (libSQL + WebSocket live wire) + brutalist UI (local Vite + hosted Next), no cloud DB required.",
   "scripts": {
     "dev": "concurrently -n engine,ui -c blue,green \"npm:dev:engine\" \"npm:dev:ui\"",

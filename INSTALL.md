@@ -45,6 +45,9 @@ npm run setup            # install engine + ui + web
 npm run build            # build UI + compile engine
 npm run factory          # = node cli/index.mjs up
 ```
+Optional extras (GitHub login, Turso sync, auth token): copy
+[engine/.env.example](engine/.env.example) to `engine/.env` and fill in what
+you need.
 
 ## Option D — Docker / server self-host
 For a shared team instance on a server. The container needs a signed-in Claude

@@ -17,3 +17,6 @@ desktop/out/
 desktop/resources/
 cli/engine/
 cli/ui/
+
+# factory agent attachment artifacts
+_factory_*

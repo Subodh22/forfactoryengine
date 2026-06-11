@@ -38,5 +38,6 @@ If you must reach the engine remotely:
   credentials.
 
 ## Reporting a vulnerability
-Email <security@your-domain.example> with details and reproduction steps. Please
-do not open public issues for security reports.
+Open a private [GitHub Security Advisory](https://docs.github.com/en/code-security/security-advisories)
+on this repository with details and reproduction steps. Please do not open
+public issues for security reports.
