@@ -21,6 +21,9 @@ interface FactoryCtx {
   ready: boolean;
   needToken: boolean;
   live: boolean;
+  /** Bumped on every WebSocket reconnect — open panels use it to re-pull
+   *  persisted state that streamed past while the socket was down. */
+  wsEpoch: number;
   projects: Project[];
   jobs: Job[];
   ghLogin: string;
@@ -66,6 +69,7 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [ghLogin, setGhLogin] = useState("");
   const [ghOAuth, setGhOAuth] = useState(false);
+  const [wsEpoch, setWsEpoch] = useState(0);
 
   const outputListeners = useRef<Listeners>(new Map());
   const chatListeners = useRef<Listeners>(new Map());
@@ -80,30 +84,57 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    api<Project[]>("/api/projects").then(setProjects).catch(() => {});
-    api<Job[]>("/api/jobs").then(setJobs).catch(() => {});
-    api<{ login: string; oauthConfigured: boolean }>("/api/github/status")
-      .then((s) => { setGhLogin(s.login); setGhOAuth(s.oauthConfigured); }).catch(() => {});
 
-    const ws = new WebSocket(wsUrl());
-    ws.onopen = () => setLive(true);
-    ws.onclose = () => setLive(false);
-    ws.onmessage = (e) => {
-      let ev: ServerEvent;
-      try { ev = JSON.parse(e.data) as ServerEvent; } catch { return; }
-      switch (ev.type) {
-        case "project.created": setProjects((p) => [ev.project, ...p.filter((x) => x.id !== ev.project.id)]); break;
-        case "project.updated": setProjects((p) => p.map((x) => (x.id === ev.project.id ? ev.project : x))); break;
-        case "project.removed": setProjects((p) => p.filter((x) => x.id !== ev.id)); break;
-        case "job.created": setJobs((j) => (j.some((x) => x.id === ev.job.id) ? j : [ev.job, ...j])); break;
-        case "job.updated": setJobs((j) => (j.some((x) => x.id === ev.job.id) ? j.map((x) => (x.id === ev.job.id ? ev.job : x)) : [ev.job, ...j])); break;
-        case "job.removed": setJobs((j) => j.filter((x) => x.id !== ev.id)); break;
-        case "job.output": fire(outputListeners.current, ev.jobId, ev.chunk); break;
-        case "job.chat": fire<ChatMsg>(chatListeners.current, ev.jobId, { id: `${Date.now()}-${Math.random()}`, role: ev.role, text: ev.text, images: ev.images }); break;
-        case "term.output": fire(termListeners.current, ev.sessionId, ev.text); break;
-      }
+    const loadSnapshot = () => {
+      api<Project[]>("/api/projects").then(setProjects).catch(() => {});
+      api<Job[]>("/api/jobs").then(setJobs).catch(() => {});
+      api<{ login: string; oauthConfigured: boolean }>("/api/github/status")
+        .then((s) => { setGhLogin(s.login); setGhOAuth(s.oauthConfigured); }).catch(() => {});
     };
-    return () => ws.close();
+    loadSnapshot();
+
+    // Reconnect with exponential backoff. The server has no event replay, so a
+    // successful reconnect refetches the snapshot (events missed while down)
+    // and bumps wsEpoch so open panels re-pull their persisted logs.
+    let ws: WebSocket | null = null;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
+
+    const connect = () => {
+      if (disposed) return;
+      ws = new WebSocket(wsUrl());
+      ws.onopen = () => {
+        setLive(true);
+        if (attempts > 0) { loadSnapshot(); setWsEpoch((n) => n + 1); }
+        attempts = 0;
+      };
+      ws.onclose = () => {
+        setLive(false);
+        if (disposed) return;
+        const delay = Math.min(1000 * 2 ** attempts, 30_000) + Math.random() * 250;
+        attempts += 1;
+        timer = setTimeout(connect, delay);
+      };
+      ws.onmessage = (e) => {
+        let ev: ServerEvent;
+        try { ev = JSON.parse(e.data) as ServerEvent; } catch { return; }
+        switch (ev.type) {
+          case "project.created": setProjects((p) => [ev.project, ...p.filter((x) => x.id !== ev.project.id)]); break;
+          case "project.updated": setProjects((p) => p.map((x) => (x.id === ev.project.id ? ev.project : x))); break;
+          case "project.removed": setProjects((p) => p.filter((x) => x.id !== ev.id)); break;
+          case "job.created": setJobs((j) => (j.some((x) => x.id === ev.job.id) ? j : [ev.job, ...j])); break;
+          case "job.updated": setJobs((j) => (j.some((x) => x.id === ev.job.id) ? j.map((x) => (x.id === ev.job.id ? ev.job : x)) : [ev.job, ...j])); break;
+          case "job.removed": setJobs((j) => j.filter((x) => x.id !== ev.id)); break;
+          case "job.output": fire(outputListeners.current, ev.jobId, ev.chunk); break;
+          case "job.chat": fire<ChatMsg>(chatListeners.current, ev.jobId, { id: `${Date.now()}-${Math.random()}`, role: ev.role, text: ev.text, images: ev.images }); break;
+          case "term.output": fire(termListeners.current, ev.sessionId, ev.text); break;
+        }
+      };
+    };
+    connect();
+
+    return () => { disposed = true; clearTimeout(timer); ws?.close(); };
   }, [ready]);
 
   const addJob = useCallback((job: Job) => {
@@ -115,11 +146,11 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<FactoryCtx>(() => ({
-    ready, needToken, live, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob, dropJob,
+    ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob, dropJob,
     onOutput: (jobId, cb) => addListener(outputListeners.current, jobId, cb),
     onChat: (jobId, cb) => addListener(chatListeners.current, jobId, cb),
     onTerm: (sessionId, cb) => addListener(termListeners.current, sessionId, cb),
-  }), [ready, needToken, live, projects, jobs, ghLogin, ghOAuth, addJob, dropJob]);
+  }), [ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, addJob, dropJob]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -178,7 +209,7 @@ export function useDescendants(rootId: string): Job[] {
  *  job is running (`live`). Subscribing only after the backfill resolves avoids
  *  duplicating chunks that are already in the persisted log. */
 export function useJobOutput(jobId: string, live: boolean): string {
-  const { onOutput } = useFactory();
+  const { onOutput, wsEpoch } = useFactory();
   const [output, setOutput] = useState("");
   useEffect(() => {
     let cancelled = false;
@@ -189,7 +220,9 @@ export function useJobOutput(jobId: string, live: boolean): string {
       .then((r) => { if (cancelled) return; setOutput(r.output); if (live) tail(); })
       .catch(() => { if (!cancelled && live) tail(); });
     return () => { cancelled = true; off?.(); };
-  }, [jobId, live, onOutput]);
+    // wsEpoch: after a reconnect, re-pull the durable log to recover chunks
+    // that streamed while the socket was down, then resubscribe.
+  }, [jobId, live, onOutput, wsEpoch]);
   return output;
 }
 
