@@ -192,8 +192,8 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
 
             {isOpen && (
               <div className="divide-y divide-ink/10">
-                {rows.map((job) => <JobRow key={job.id} job={job} depth={0} ctx={ctx} />)}
                 {g.key === "pending" && <QuickAdd onAdd={(title, images) => createOptimistic(null, 50, { title, images, focus: false })} />}
+                {rows.map((job) => <JobRow key={job.id} job={job} depth={0} ctx={ctx} />)}
               </div>
             )}
           </div>
