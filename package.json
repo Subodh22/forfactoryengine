@@ -5,6 +5,11 @@
   "engines": {
     "node": ">=20"
   },
+  "workspaces": [
+    "ui",
+    "web",
+    "packages/ui-core"
+  ],
   "description": "Factory — local-first AI coding automation. Engine (libSQL + WebSocket live wire) + brutalist UI (local Vite + hosted Next), no cloud DB required.",
   "scripts": {
     "dev": "concurrently -n engine,ui -c blue,green \"npm:dev:engine\" \"npm:dev:ui\"",
@@ -20,9 +25,9 @@
     "start:dist": "npm --prefix engine run start:dist",
     "typecheck": "npm --prefix engine run typecheck && npm --prefix ui run typecheck && npm --prefix web run typecheck",
     "test": "npm --prefix engine test",
-    "lint": "eslint engine/src ui/src web/app web/components web/lib",
-    "format": "prettier --write engine/src ui/src web/app web/components web/lib",
-    "setup": "npm install && npm --prefix engine install && npm --prefix ui install && npm --prefix web install"
+    "lint": "eslint engine/src ui/src web/app packages/ui-core/src",
+    "format": "prettier --write engine/src ui/src web/app packages/ui-core/src",
+    "setup": "npm install && npm --prefix engine install"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

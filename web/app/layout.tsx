@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Archivo_Black, Space_Mono, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { FactoryProvider } from "@/lib/data";
-import { Toaster } from "@/components/ui/sonner";
+import { Providers } from "./providers";
 
 const archivo = Archivo({ variable: "--font-archivo", subsets: ["latin"], display: "swap" });
 const archivoBlack = Archivo_Black({ variable: "--font-archivo-black", weight: "400", subsets: ["latin"], display: "swap" });
@@ -20,10 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${archivo.variable} ${archivoBlack.variable} ${spaceMono.variable} ${jetbrainsMono.variable} h-full`}>
       <body className="min-h-full flex flex-col antialiased">
-        <FactoryProvider>
-          {children}
-          <Toaster position="bottom-right" />
-        </FactoryProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

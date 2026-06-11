@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Components live outside this app's root — tell Tailwind to scan them too. */
+@source "../../packages/ui-core/src";
 
 /* ───────────────────────── Grid-Cast: concrete brutalist theme ─────────────────────────
    A light, high-contrast "concrete grid" reskin: a poured-concrete surface ruled

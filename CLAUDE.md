@@ -5,10 +5,14 @@ Local-first AI coding automation. Engine + brutalist UI monorepo.
 ## Project Structure
 
 ```
-engine/   — Node.js backend: libSQL DB, agent orchestrator, WebSocket live wire, REST API
-ui/       — Vite SPA (served by engine, same-origin)
-web/      — Next.js app (deploy to Vercel, points at engine via NEXT_PUBLIC_ENGINE_URL)
+engine/            — Node.js backend: libSQL DB, agent orchestrator, WebSocket live wire, REST API
+packages/ui-core/  — ALL shared UI: components + client libs used by both apps (edit here)
+ui/                — Vite shell (served by engine, same-origin): entry, CSS, configs only
+web/               — Next.js shell (deploy to Vercel, NEXT_PUBLIC_ENGINE_URL): entry, CSS, configs only
 ```
+
+ui/, web/ and packages/ui-core are npm workspaces (one root install). The engine
+keeps its own node_modules (desktop packaging copies it verbatim).
 
 ## Commands
 
@@ -38,8 +42,10 @@ npm run typecheck      # typecheck engine + ui + web
 
 - TypeScript throughout, uses semicolons
 - Brutalist "concrete" UI style — uppercase labels, `font-data`, `border-ink`, `bg-concrete`
-- Both UIs must stay in sync — changes to one should be mirrored to the other
-- `mutations.ts` in ui/web has all client-side API calls
+- UI changes happen ONCE in packages/ui-core/src — both apps consume it via their `@/` alias;
+  never re-create per-app copies of components
+- Every component file in ui-core starts with `"use client"` (Next needs it; Vite ignores it)
+- `packages/ui-core/src/lib/mutations.ts` has all client-side API calls
 - Chat replies: `POST /api/jobs/:id/reply` for active jobs, `POST /api/jobs/:id/append` for pending jobs
 
 ## Agent Guidelines
@@ -48,4 +54,4 @@ npm run typecheck      # typecheck engine + ui + web
 - Focus only on files directly relevant to the task
 - Do not read entire directories — read one file to understand a pattern, then apply it
 - Ignore: node_modules/, dist/, .next/, build/, .git/, *.lock files
-- The ui/ and web/ directories share nearly identical components — changes often need to be applied to both
+- UI work: edit packages/ui-core/src once; ui/ and web/ are thin shells around it

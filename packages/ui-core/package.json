@@ -1,0 +1,25 @@
+{
+  "name": "@factory/ui-core",
+  "private": true,
+  "type": "module",
+  "version": "0.0.1",
+  "description": "Shared Factory UI — every component and client lib used by both the local Vite app (ui/) and the hosted Next app (web/). Edit here once; both apps consume these sources directly via their @/ alias.",
+  "main": "./src/components/AppShell.tsx",
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@radix-ui/react-scroll-area": "^1.2.3",
+    "@radix-ui/react-separator": "^1.1.2",
+    "@radix-ui/react-slot": "^1.1.2",
+    "@radix-ui/react-tabs": "^1.1.3",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "sonner": "^1.7.4",
+    "tailwind-merge": "^2.6.0"
+  }
+}
