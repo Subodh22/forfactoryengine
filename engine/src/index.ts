@@ -1,7 +1,8 @@
 import "./env"; // load .env before anything reads process.env
 import { initSchema, cloudSyncEnabled } from "./db";
 import { startServer } from "./server";
-import { pickupQueued, recoverOrphans } from "./runner";
+import { pickupQueued, recoverOrphans, drainForShutdown } from "./runner";
+import { killAllClaudeProcs } from "./agent/claude-runner";
 import { authEnabled } from "./auth";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -31,7 +32,27 @@ if (!isLoopback && !authEnabled) {
 }
 
 await initSchema();
-startServer(PORT);
+const server = startServer(PORT);
+
+// Graceful shutdown: stop dispatching, kill agent processes, re-queue in-flight
+// jobs (so the next boot resumes them), then close. A hard deadline guarantees
+// the process exits even if a handle hangs.
+let shuttingDown = false;
+function shutdown(signal: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n[factory] ${signal} — draining: agents stopped, in-flight jobs re-queued for next start.`);
+  setTimeout(() => process.exit(1), 15_000).unref();
+  killAllClaudeProcs();
+  void drainForShutdown()
+    .catch((err) => console.error(`[factory] drain failed: ${err}`))
+    .finally(() => {
+      server.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 3_000).unref();
+    });
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 // Recover jobs the previous engine left "running" when it stopped — otherwise
 // they'd show RUNNING forever and never finish. Runs once, before the poll.

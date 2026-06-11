@@ -407,10 +407,7 @@ const JOB_JSON_COLUMNS: Record<string, string> = {
   images: "images", touchedPaths: "touched_paths", blockedBy: "blocked_by",
 };
 
-export async function patchJob(
-  id: string,
-  fields: Partial<Job>,
-): Promise<void> {
+function buildJobSets(fields: Partial<Job>): { sets: string[]; args: (string | number)[] } {
   const sets: string[] = [];
   const args: (string | number)[] = [];
   for (const [k, v] of Object.entries(fields)) {
@@ -425,9 +422,36 @@ export async function patchJob(
     sets.push(`${col} = ?`);
     args.push(typeof v === "boolean" ? (v ? 1 : 0) : v as string | number);
   }
+  return { sets, args };
+}
+
+export async function patchJob(
+  id: string,
+  fields: Partial<Job>,
+): Promise<void> {
+  const { sets, args } = buildJobSets(fields);
   if (!sets.length) return;
   args.push(id);
   await db.execute({ sql: `UPDATE jobs SET ${sets.join(", ")} WHERE id = ?`, args });
+}
+
+/** Conditionally patch a job: the UPDATE applies only while its status still
+ *  matches `whereStatus`, and the rowsAffected check reports whether this call
+ *  won the transition. This is the DB-level idempotency guard that keeps a
+ *  restart (or a second engine sharing a Turso DB) from double-dispatching. */
+export async function patchJobIf(
+  id: string,
+  fields: Partial<Job>,
+  opts: { whereStatus: JobStatus },
+): Promise<boolean> {
+  const { sets, args } = buildJobSets(fields);
+  if (!sets.length) return false;
+  args.push(id, opts.whereStatus);
+  const res = await db.execute({
+    sql: `UPDATE jobs SET ${sets.join(", ")} WHERE id = ? AND status = ?`,
+    args,
+  });
+  return res.rowsAffected === 1;
 }
 
 export async function removeJob(id: string): Promise<void> {

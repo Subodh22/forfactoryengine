@@ -4,12 +4,13 @@ import {
 import { createPR } from "./agent/github";
 import { emitOutput } from "./events";
 import { sendJobNotification } from "./notify";
-import { updateStatus } from "./status";
-import { getProject, listDelegationState, isManualEpic, descendantsOf, type Job, type EpicState } from "./db";
+import { updateStatus, broadcastJob } from "./status";
+import { getProject, listDelegationState, isManualEpic, descendantsOf, patchJobIf, type Job, type EpicState } from "./db";
 import { enqueue } from "./runner";
 
-// Idempotency guards across re-fires (single engine process).
-const promoted = new Set<string>();
+// Promotion is guarded at the DB level (patchJobIf pending→queued), so it is
+// idempotent across restarts and shared-DB engines. Finalize keeps an
+// in-process guard only to coalesce re-fires while one finalize is running.
 const finalizing = new Set<string>();
 // Coalesce bursts of child updates into one evaluation pass.
 let pending = false;
@@ -60,24 +61,35 @@ function evaluateEpic({ epic, children }: EpicState) {
   // entirely and just watch for the whole subtree to finish so we can finalize.
   if (!isManualEpic(epic)) {
     for (const c of children) {
-      if (c.status !== "pending" || promoted.has(c.id)) continue;
+      if (c.status !== "pending") continue;
       const ready = c.blockedBy.every((b) => completed.has(b));
       if (!ready) continue;
       const conflict = inFlight.some((s) => pathsOverlap(s.touchedPaths, c.touchedPaths));
       if (conflict) continue;
 
-      promoted.add(c.id);
-      inFlight.push(c);
-      log(epic.id, `Dispatching subtask "${c.title}".`);
-      updateStatus(c.id, "queued")
-        .then(() => enqueue(c.id))
-        .catch((err) => {
-          promoted.delete(c.id);
-          console.error(`[delegator] promote failed for ${c.id}: ${err}`);
-        });
+      inFlight.push(c); // optimistic: keeps path-conflict checks correct within this pass
+      void promoteChild(epic.id, c);
     }
   }
 
+  return finishCheck({ epic, children });
+}
+
+async function promoteChild(epicId: string, c: Job): Promise<void> {
+  try {
+    // Only one caller can win the pending→queued transition; everyone else
+    // (a concurrent pass, a restarted engine, a second engine) no-ops here.
+    const won = await patchJobIf(c.id, { status: "queued" }, { whereStatus: "pending" });
+    if (!won) return;
+    log(epicId, `Dispatching subtask "${c.title}".`);
+    await broadcastJob(c.id);
+    enqueue(c.id);
+  } catch (err) {
+    console.error(`[delegator] promote failed for ${c.id}: ${err}`);
+  }
+}
+
+function finishCheck({ epic, children }: EpicState) {
   const anyFailed = children.some((c) => c.status === "failed");
   const allDone = children.every((c) => c.status === "completed");
   // Manual plans are live trackers — they never auto-close. The user finalizes
@@ -108,7 +120,6 @@ export async function finalizeEpic(epic: Job): Promise<void> {
       await updateStatus(epic.id, "completed");
       await sendJobNotification({ jobId: epic.id, title: epic.title, status: "completed", projectName: project.name }).catch(() => {});
       finalizing.delete(epic.id);
-      promoted.delete(epic.id);
       return;
     }
   }
@@ -152,6 +163,5 @@ export async function finalizeEpic(epic: Job): Promise<void> {
       deleteBranch(project.localPath, branch);
     } catch { /* best-effort */ }
     finalizing.delete(epic.id);
-    promoted.delete(epic.id);
   }
 }

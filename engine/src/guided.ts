@@ -69,7 +69,7 @@ export async function startGuidedEpic(job: Job, project: Project): Promise<void>
   const jobId = job.id;
   const { worktreePath } = createWorktree(project.localPath, `${jobId}-discovery`, project.defaultBranch);
   const session = createClaudeSession(worktreePath);
-  session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+  session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch((err) => console.error(`[guided] save sessionId for ${jobId} failed: ${err}`)); });
   session.onChunk((t) => emitOutput(jobId, t));
   sessions.set(jobId, { session, worktreePath, project, busy: false });
 
@@ -137,7 +137,7 @@ async function rehydrate(jobId: string): Promise<GuidedSession | undefined> {
   if (!project) return undefined;
   const { worktreePath } = createWorktree(project.localPath, `${jobId}-discovery`, project.defaultBranch);
   const session = createClaudeSession(worktreePath, job.sessionId); // resume discovery context
-  session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+  session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch((err) => console.error(`[guided] save sessionId for ${jobId} failed: ${err}`)); });
   session.onChunk((t) => emitOutput(jobId, t));
   const g: GuidedSession = { session, worktreePath, project, busy: false };
   sessions.set(jobId, g);

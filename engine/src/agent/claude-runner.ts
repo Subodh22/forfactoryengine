@@ -1,7 +1,4 @@
 import { spawn } from "child_process";
-import path from "path";
-import fs from "fs";
-import os from "os";
 
 export interface TurnResult {
   assistantText: string;
@@ -30,6 +27,39 @@ export interface ClaudeSessionOptions {
 }
 
 const isWin = process.platform === "win32";
+
+// ── Process control ──────────────────────────────────────────────────────────
+// Every live `claude` child is tracked so a graceful shutdown (or a hung turn)
+// can kill the whole process group — otherwise a crashed engine leaves orphaned
+// agents burning tokens with no job to report to.
+const liveProcs = new Set<ReturnType<typeof spawn>>();
+
+// A turn that produces no output for this long is considered hung (model/API
+// outage, network partition) and killed; the job fails with a clear error
+// instead of blocking its queue slot forever. 0 disables the timeout.
+const IDLE_TIMEOUT_MS = Number(process.env.FACTORY_TURN_IDLE_TIMEOUT_MS ?? 600_000);
+
+function killProcTree(proc: ReturnType<typeof spawn>): void {
+  try {
+    // Detached spawn (below) makes the child a process-group leader, so a
+    // negative-pid kill takes down the CLI's own children too.
+    if (!isWin && proc.pid) process.kill(-proc.pid, "SIGTERM");
+    else proc.kill("SIGTERM");
+  } catch { /* already gone */ }
+  const hard = setTimeout(() => {
+    try {
+      if (!isWin && proc.pid) process.kill(-proc.pid, "SIGKILL");
+      else proc.kill("SIGKILL");
+    } catch { /* already gone */ }
+  }, 10_000);
+  hard.unref();
+}
+
+/** Kill every live agent process — called on engine shutdown. */
+export function killAllClaudeProcs(): void {
+  for (const p of liveProcs) killProcTree(p);
+  liveProcs.clear();
+}
 
 function formatToolUse(name: string, input: Record<string, unknown>): string {
   const n = name.toLowerCase();
@@ -97,11 +127,6 @@ export function createClaudeSession(cwd: string, resumeSessionId?: string, optio
     return new Promise((resolve, reject) => {
       if (cancelled) { reject(new Error("Session cancelled")); return; }
 
-      // Write prompt to a temp file to avoid Windows cmd.exe arg length limits
-      // and special-character quoting issues
-      const tmpPrompt = path.join(os.tmpdir(), `factory-prompt-${Date.now()}.txt`);
-      fs.writeFileSync(tmpPrompt, text, "utf8");
-
       const args: string[] = [
         "--output-format", "stream-json",
         "--verbose",
@@ -119,16 +144,15 @@ export function createClaudeSession(cwd: string, resumeSessionId?: string, optio
         cwd,
         stdio: ["pipe", "pipe", "pipe"],
         shell: isWin,
+        detached: !isWin, // own process group → killProcTree reaps grandchildren
       });
       currentProc = proc;
+      liveProcs.add(proc);
 
       // Feed the prompt via stdin then close — -p/--print reads from stdin when
       // no prompt argument is supplied
       proc.stdin!.write(text + "\n");
       proc.stdin!.end();
-
-      // Clean up temp file (fire and forget)
-      fs.unlink(tmpPrompt, () => {});
 
       let buffer = "";
       let assistantText = "";
@@ -146,7 +170,28 @@ export function createClaudeSession(cwd: string, resumeSessionId?: string, optio
         resolve(result);
       }
 
+      function fail(err: Error) {
+        if (resolved) return;
+        resolved = true;
+        currentProc = null;
+        reject(err);
+      }
+
+      // Inactivity watchdog — re-armed on every output chunk, so long turns are
+      // fine as long as the agent keeps streaming.
+      let idleTimer: NodeJS.Timeout | undefined;
+      const armIdleTimer = () => {
+        if (IDLE_TIMEOUT_MS <= 0) return;
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          killProcTree(proc);
+          fail(new Error(`Claude turn produced no output for ${Math.round(IDLE_TIMEOUT_MS / 60_000)} min — killed as hung`));
+        }, IDLE_TIMEOUT_MS);
+      };
+      armIdleTimer();
+
       proc.stdout!.on("data", (chunk: Buffer) => {
+        armIdleTimer();
         buffer += chunk.toString();
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
@@ -191,23 +236,28 @@ export function createClaudeSession(cwd: string, resumeSessionId?: string, optio
       });
 
       proc.stderr!.on("data", (chunk: Buffer) => {
+        armIdleTimer();
         const text = chunk.toString();
         if (chunkHandler) chunkHandler("\x00stderr\x00" + text);
       });
 
       proc.on("close", (code) => {
+        clearTimeout(idleTimer);
+        liveProcs.delete(proc);
         currentProc = null;
         if (!resolved) {
           if (code === 0 || assistantText) {
             finish({ assistantText, resultText, inputTokens, outputTokens, costUsd });
           } else {
-            reject(new Error(`Claude exited with code ${code}`));
+            fail(new Error(`Claude exited with code ${code}`));
           }
         }
       });
 
       proc.on("error", (err) => {
-        if (!resolved) reject(err);
+        clearTimeout(idleTimer);
+        liveProcs.delete(proc);
+        fail(err instanceof Error ? err : new Error(String(err)));
       });
     });
   }
@@ -219,7 +269,7 @@ export function createClaudeSession(cwd: string, resumeSessionId?: string, optio
     getSessionId() { return currentSessionId; },
     cancel() {
       cancelled = true;
-      currentProc?.kill("SIGTERM");
+      if (currentProc) killProcTree(currentProc);
     },
   };
 }

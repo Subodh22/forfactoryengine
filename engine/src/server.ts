@@ -9,8 +9,16 @@ import {
   listProjects, getProject, createProject,
   updateProject, removeProject, removeJob, redoJob, appendPrompt, requeueJob, cancelEpic,
   getTodayStats, getSetting, setSetting, approveDelegationPlan,
-  type Job, type JobKind, type JobEffort, type JobStatus, type JobAssignee,
+  type Job,
 } from "./db";
+import type { z } from "zod";
+import { parse } from "./schema";
+import {
+  AppendBodySchema, ClaudeMdBodySchema, CloneBodySchema, CreateChildrenBodySchema,
+  CreateJobBodySchema, CreateProjectBodySchema, CreateRepoBodySchema, EnvWriteBodySchema,
+  GithubConnectBodySchema, PatchJobBodySchema, RedoBodySchema, ReplyBodySchema,
+  SetStatusBodySchema, UpdateProjectBodySchema,
+} from "./api-schemas";
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
@@ -33,23 +41,59 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // point at a bundled copy.
 const UI_DIST = process.env.FACTORY_UI_DIST ?? path.resolve(__dirname, "../../ui/dist");
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+// Wide-open CORS is acceptable only while the engine is unauthenticated *and*
+// loopback-bound (index.ts enforces that pairing at startup). Once auth is on
+// the engine may be network-exposed, so browsers are limited to the configured
+// app origin plus the local dev hosts.
+const DEV_ORIGINS = [
+  "http://localhost:5173", "http://127.0.0.1:5173",
+  "http://localhost:3000", "http://127.0.0.1:3000",
+];
+function corsHeadersFor(req: http.IncomingMessage): Record<string, string> {
+  const base = {
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+  if (!authEnabled) return { ...base, "Access-Control-Allow-Origin": "*" };
+  const origin = String(req.headers.origin ?? "");
+  return new Set([APP_URL, ...DEV_ORIGINS]).has(origin)
+    ? { ...base, "Access-Control-Allow-Origin": origin, Vary: "Origin" }
+    : base;
+}
 
 function sendJson(res: http.ServerResponse, code: number, data: unknown): void {
-  res.writeHead(code, { "Content-Type": "application/json", ...CORS });
+  res.writeHead(code, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
 }
 
-function readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+/** Read and JSON-parse the request body. Returns null for malformed JSON so
+ *  routes answer 400 instead of treating it as an empty body. */
+function readBody(req: http.IncomingMessage): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
     let raw = "";
     req.on("data", (c) => { raw += c; if (raw.length > 12_000_000) req.destroy(); });
-    req.on("end", () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve({}); } });
+    req.on("end", () => {
+      if (!raw) return resolve({});
+      try {
+        const parsed = JSON.parse(raw);
+        resolve(typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : null);
+      } catch { resolve(null); }
+    });
   });
+}
+
+/** Parse a request body against its schema. On failure this sends the 400
+ *  itself and returns null, so handlers can simply `if (!b) return;`. */
+async function parseBody<T>(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  schema: z.ZodType<T>,
+): Promise<T | null> {
+  const raw = await readBody(req);
+  if (raw === null) { sendJson(res, 400, { error: "invalid JSON body" }); return null; }
+  const r = parse(schema, raw);
+  if (!r.ok) { sendJson(res, 400, { error: r.error }); return null; }
+  return r.value;
 }
 
 const MIME: Record<string, string> = {
@@ -78,7 +122,8 @@ function workspaceFor(repo: string): string {
 
 export function startServer(port: number): http.Server {
   const server = http.createServer(async (req, res) => {
-    if (req.method === "OPTIONS") { res.writeHead(204, CORS); return res.end(); }
+    for (const [k, v] of Object.entries(corsHeadersFor(req))) res.setHeader(k, v);
+    if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);
     const { pathname } = url;
     const method = req.method ?? "GET";
@@ -119,11 +164,11 @@ export function startServer(port: number): http.Server {
         return sendJson(res, 200, { connected: Boolean(login), login: login ?? "", oauthConfigured });
       }
       if (method === "POST" && pathname === "/api/github/connect") {
-        const token = String((await readBody(req)).token ?? "").trim();
-        if (!token) return sendJson(res, 400, { error: "token required" });
+        const b = await parseBody(req, res, GithubConnectBodySchema);
+        if (!b) return;
         try {
-          const { login } = await getUser(token);
-          await setSetting("githubToken", token);
+          const { login } = await getUser(b.token);
+          await setSetting("githubToken", b.token);
           await setSetting("githubLogin", login);
           return sendJson(res, 200, { login });
         } catch {
@@ -150,20 +195,16 @@ export function startServer(port: number): http.Server {
       // ── Projects ──
       if (method === "GET" && pathname === "/api/projects") return sendJson(res, 200, await listProjects());
       if (method === "POST" && pathname === "/api/projects") {
-        const b = await readBody(req);
-        const name = String(b.name ?? "").trim();
-        const localPath = String(b.localPath ?? "").trim();
-        const repo = String(b.repo ?? "").trim();
-        if (!name) return sendJson(res, 400, { error: "name required" });
-        if (!localPath && !repo) return sendJson(res, 400, { error: "localPath or repo required" });
-        if (localPath && !fs.existsSync(localPath)) return sendJson(res, 400, { error: `path not found: ${localPath}` });
-        const githubToken = String(b.githubToken ?? "") || (repo ? (await getSetting("githubToken")) ?? "" : "");
+        const b = await parseBody(req, res, CreateProjectBodySchema);
+        if (!b) return;
+        if (b.localPath && !fs.existsSync(b.localPath)) return sendJson(res, 400, { error: `path not found: ${b.localPath}` });
+        const githubToken = b.githubToken || (b.repo ? (await getSetting("githubToken")) ?? "" : "");
         const project = await createProject({
-          name, localPath, repo,
-          defaultBranch: String(b.defaultBranch ?? "main"),
+          name: b.name, localPath: b.localPath, repo: b.repo,
+          defaultBranch: b.defaultBranch,
           githubToken,
-          agentRules: String(b.agentRules ?? ""),
-          color: String(b.color ?? ""),
+          agentRules: b.agentRules,
+          color: b.color,
         });
         broadcast({ type: "project.created", project });
         return sendJson(res, 201, project);
@@ -179,22 +220,19 @@ export function startServer(port: number): http.Server {
         return sendJson(res, 200, { content: exists ? fs.readFileSync(envPath, "utf8") : "", exists, file: ".env" });
       }
       if (method === "POST" && projEnvMatch) {
-        const b = await readBody(req);
-        const localPath = String(b.localPath ?? "");
-        const content = b.content;
-        if (!localPath) return sendJson(res, 400, { error: "localPath required" });
-        if (typeof content !== "string") return sendJson(res, 400, { error: "content required" });
-        if (!fs.existsSync(localPath)) return sendJson(res, 404, { error: "path not found" });
-        const normalized = content === "" || content.endsWith("\n") ? content : content + "\n";
-        fs.writeFileSync(path.join(localPath, ".env"), normalized, "utf8");
+        const b = await parseBody(req, res, EnvWriteBodySchema);
+        if (!b) return;
+        if (!fs.existsSync(b.localPath)) return sendJson(res, 404, { error: "path not found" });
+        const normalized = b.content === "" || b.content.endsWith("\n") ? b.content : b.content + "\n";
+        fs.writeFileSync(path.join(b.localPath, ".env"), normalized, "utf8");
         return sendJson(res, 200, { ok: true, file: ".env" });
       }
 
       if (method === "POST" && pathname === "/api/projects/clone") {
-        const b = await readBody(req);
-        const repo = String(b.repo ?? "");
-        if (!repo) return sendJson(res, 400, { error: "repo required" });
-        const localPath = String(b.targetPath ?? "") || workspaceFor(repo);
+        const b = await parseBody(req, res, CloneBodySchema);
+        if (!b) return;
+        const repo = b.repo;
+        const localPath = b.targetPath || workspaceFor(repo);
         if (fs.existsSync(localPath)) return sendJson(res, 200, { localPath, alreadyExists: true });
         const token = await getSetting("githubToken");
         const cloneUrl = token ? `https://${token}@github.com/${repo}.git` : `https://github.com/${repo}.git`;
@@ -209,14 +247,13 @@ export function startServer(port: number): http.Server {
       }
 
       if (method === "POST" && pathname === "/api/projects/create-repo") {
-        const b = await readBody(req);
+        const b = await parseBody(req, res, CreateRepoBodySchema);
+        if (!b) return;
         const token = (await getSetting("githubToken")) || process.env.GITHUB_TOKEN;
         if (!token) return sendJson(res, 401, { error: "Connect GitHub to create a repo" });
-        const name = String(b.name ?? "").trim();
-        if (!name) return sendJson(res, 400, { error: "name required" });
         let repoInfo;
         try {
-          repoInfo = await createRepo(token, name, String(b.description ?? ""), b.private !== false);
+          repoInfo = await createRepo(token, b.name, b.description, b.private);
         } catch (err) {
           const msg = (err as Error).message ?? "Failed to create repo";
           return sendJson(res, /already exists/i.test(msg) ? 409 : 500, { error: msg });
@@ -234,14 +271,13 @@ export function startServer(port: number): http.Server {
       }
 
       if (method === "POST" && pathname === "/api/projects/claudemd") {
-        const b = await readBody(req);
-        const localPath = String(b.localPath ?? "");
-        if (!localPath) return sendJson(res, 400, { error: "localPath required" });
-        if (!fs.existsSync(localPath)) return sendJson(res, 404, { error: "path not found" });
-        const claudeMdPath = path.join(localPath, "CLAUDE.md");
+        const b = await parseBody(req, res, ClaudeMdBodySchema);
+        if (!b) return;
+        if (!fs.existsSync(b.localPath)) return sendJson(res, 404, { error: "path not found" });
+        const claudeMdPath = path.join(b.localPath, "CLAUDE.md");
         if (fs.existsSync(claudeMdPath)) return sendJson(res, 200, { ok: true, skipped: true });
-        const lines: string[] = [`# ${String(b.projectName ?? "Project")}`, ""];
-        if (String(b.codemapHint ?? "").trim()) lines.push("## Project Structure", String(b.codemapHint).trim(), "");
+        const lines: string[] = [`# ${b.projectName}`, ""];
+        if (b.codemapHint.trim()) lines.push("## Project Structure", b.codemapHint.trim(), "");
         lines.push(
           "## Agent Guidelines",
           "- Read this file before exploring the codebase",
@@ -250,7 +286,7 @@ export function startServer(port: number): http.Server {
           "- Ignore: node_modules/, dist/, .next/, build/, .git/, *.lock files",
           "",
         );
-        if (String(b.agentRules ?? "").trim()) lines.push("## Project Rules", String(b.agentRules).trim(), "");
+        if (b.agentRules.trim()) lines.push("## Project Rules", b.agentRules.trim(), "");
         fs.writeFileSync(claudeMdPath, lines.join("\n"), "utf8");
         return sendJson(res, 200, { ok: true });
       }
@@ -260,7 +296,8 @@ export function startServer(port: number): http.Server {
       if (projIdMatch) {
         const id = decodeURIComponent(projIdMatch[1]);
         if (method === "PATCH") {
-          const b = await readBody(req);
+          const b = await parseBody(req, res, UpdateProjectBodySchema);
+          if (!b) return;
           await updateProject(id, b);
           const project = await getProject(id);
           if (project) broadcast({ type: "project.updated", project });
@@ -279,30 +316,26 @@ export function startServer(port: number): http.Server {
         return sendJson(res, 200, await listJobs(projectId));
       }
       if (method === "POST" && pathname === "/api/jobs") {
-        const b = await readBody(req);
-        const projectId = String(b.projectId ?? "").trim();
-        const prompt = String(b.prompt ?? "").trim();
-        if (!projectId) return sendJson(res, 400, { error: "projectId required" });
-        if (!prompt) return sendJson(res, 400, { error: "prompt required" });
-        const title = (String(b.title ?? "").trim() || prompt).slice(0, 80);
-        const kind = (String(b.kind ?? "") || "") as JobKind;
+        const b = await parseBody(req, res, CreateJobBodySchema);
+        if (!b) return;
+        const title = (b.title || b.prompt).slice(0, 80);
         // Manual plan: a hand-authored epic. It skips the AI planner and the
         // queue entirely — it sits in "delegating" while the user adds tasks and
         // runs/ticks them one by one.
-        const manual = kind === "epic" && b.manual === true;
+        const manual = b.kind === "epic" && b.manual;
         // Epics must always be queued so the worker plans & splits them.
-        const wantsRun = !manual && (b.autoRun === true || b.status === "queued" || kind === "epic");
+        const wantsRun = !manual && (b.autoRun || b.status === "queued" || b.kind === "epic");
         const job = await createJob({
-          id: typeof b.id === "string" && b.id ? b.id : undefined, // client-provided id for optimistic UI
-          projectId, title, prompt,
-          images: Array.isArray(b.images) ? (b.images as string[]) : [],
+          id: b.id || undefined, // client-provided id for optimistic UI
+          projectId: b.projectId, title, prompt: b.prompt,
+          images: b.images,
           status: manual ? "delegating" : (wantsRun ? "queued" : "pending"),
-          kind,
-          assignee: (String(b.assignee ?? "") || "") as JobAssignee,
+          kind: b.kind,
+          assignee: b.assignee,
           delegatorPlan: manual ? MANUAL_PLAN_MARKER : undefined,
-          model: String(b.model ?? ""),
-          effort: (String(b.effort ?? "") || "") as JobEffort,
-          needsApproval: b.needsApproval === true, // guided create → clarify + plan gate
+          model: b.model,
+          effort: b.effort,
+          needsApproval: b.needsApproval, // guided create → clarify + plan gate
         });
         broadcast({ type: "job.created", job });
         if (wantsRun) enqueue(job.id);
@@ -323,10 +356,9 @@ export function startServer(port: number): http.Server {
         }
         if (method === "POST" && action === "children") {
           // Materialize a hand-authored plan tree under a manual epic.
-          const b = await readBody(req);
-          const nodes = Array.isArray(b.nodes) ? b.nodes : [];
-          if (!nodes.length) return sendJson(res, 400, { error: "nodes required" });
-          const ids = await createSubtree(id, nodes);
+          const b = await parseBody(req, res, CreateChildrenBodySchema);
+          if (!b) return;
+          const ids = await createSubtree(id, b.nodes);
           const created = [];
           for (const cid of ids) {
             const j = await getJob(cid);
@@ -345,12 +377,13 @@ export function startServer(port: number): http.Server {
         if (method === "PATCH" && !action) {
           // In-place edits to a plan task: rename, re-prompt, reassign, or
           // restructure (re-parent / reorder for the live ClickUp-style list).
-          const b = await readBody(req);
+          const b = await parseBody(req, res, PatchJobBodySchema);
+          if (!b) return;
           const fields: Partial<Job> = {};
           if (typeof b.title === "string") fields.title = b.title.trim().slice(0, 80);
           if (typeof b.prompt === "string") fields.prompt = b.prompt;
-          if (typeof b.assignee === "string") fields.assignee = b.assignee as JobAssignee;
-          if (typeof b.priority === "number" && Number.isFinite(b.priority)) fields.priority = b.priority;
+          if (typeof b.assignee === "string") fields.assignee = b.assignee;
+          if (typeof b.priority === "number") fields.priority = b.priority;
           if (typeof b.parentJobId === "string") {
             // Re-parent (indent / outdent). Guard against self-parenting,
             // cycles, and moving a task that's mid-flight.
@@ -394,9 +427,10 @@ export function startServer(port: number): http.Server {
           return sendJson(res, 200, { ok: true });
         }
         if (method === "POST" && action === "status") {
-          const b = await readBody(req);
-          const status = String(b.status ?? "") as JobStatus;
-          await updateStatus(id, status, b);
+          const b = await parseBody(req, res, SetStatusBodySchema);
+          if (!b) return;
+          const { status, ...extra } = b;
+          await updateStatus(id, status, extra as Partial<Job>);
           if (status === "queued") enqueue(id);
           // Ticking a manual task to completed (or reopening it) may unblock the
           // owning epic's finalize check.
@@ -435,15 +469,17 @@ export function startServer(port: number): http.Server {
           return sendJson(res, 200, await getJob(id));
         }
         if (method === "POST" && action === "redo") {
-          const b = await readBody(req);
-          const job = await redoJob(id, b.extraPrompt as string | undefined, b.extraImages as string[] | undefined);
+          const b = await parseBody(req, res, RedoBodySchema);
+          if (!b) return;
+          const job = await redoJob(id, b.extraPrompt, b.extraImages);
           broadcast({ type: "job.created", job });
           enqueue(job.id);
           return sendJson(res, 201, job);
         }
         if (method === "POST" && action === "append") {
-          const b = await readBody(req);
-          await appendPrompt(id, String(b.text ?? ""), b.images as string[] | undefined);
+          const b = await parseBody(req, res, AppendBodySchema);
+          if (!b) return;
+          await appendPrompt(id, b.text, b.images);
           const job = await getJob(id);
           if (job) broadcast({ type: "job.updated", job });
           return sendJson(res, 200, job);
@@ -462,11 +498,9 @@ export function startServer(port: number): http.Server {
           return sendJson(res, 200, await getJob(id));
         }
         if (method === "POST" && action === "reply") {
-          const b = await readBody(req);
-          const text = String(b.text ?? "").trim();
-          const images = Array.isArray(b.images) ? (b.images as string[]) : [];
-          if (!text && !images.length) return sendJson(res, 400, { error: "text or images required" });
-          const accepted = await deliverReply(id, text, images);
+          const b = await parseBody(req, res, ReplyBodySchema);
+          if (!b) return;
+          const accepted = await deliverReply(id, b.text.trim(), b.images);
           return accepted ? sendJson(res, 202, { ok: true }) : sendJson(res, 409, { error: "no live session for this job" });
         }
       }

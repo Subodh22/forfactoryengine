@@ -11,6 +11,7 @@ import {
   initSchema,
   isManualEpic,
   patchJob,
+  patchJobIf,
   redoJob,
   requeueJob,
   rootEpicOf,
@@ -77,6 +78,22 @@ describe("job lifecycle", () => {
     const job = await createJob({ projectId: "p1", title: "safe", prompt: "x" });
     await patchJob(job.id, { nope: "ignored" } as unknown as Partial<import("./db").Job>);
     expect((await getJob(job.id))!.title).toBe("safe");
+  });
+
+  it("patchJobIf only wins while the status precondition holds", async () => {
+    const job = await createJob({ projectId: "p1", title: "promote me", prompt: "x" });
+
+    // First promotion wins the pending → queued transition…
+    expect(await patchJobIf(job.id, { status: "queued" }, { whereStatus: "pending" })).toBe(true);
+    expect((await getJob(job.id))!.status).toBe("queued");
+
+    // …and any re-fire (restart, second engine, concurrent pass) no-ops.
+    expect(await patchJobIf(job.id, { status: "queued" }, { whereStatus: "pending" })).toBe(false);
+
+    // Shutdown drain: running → queued applies only to actually-running jobs.
+    expect(await patchJobIf(job.id, { status: "queued" }, { whereStatus: "running" })).toBe(false);
+    await patchJob(job.id, { status: "running" });
+    expect(await patchJobIf(job.id, { status: "queued" }, { whereStatus: "running" })).toBe(true);
   });
 
   it("requeueJob resets per-run state", async () => {

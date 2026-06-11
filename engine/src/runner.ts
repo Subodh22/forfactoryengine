@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  getJob, getProject, getSetting, listJobsByStatus, updateUsage, patchJob, updateProject, rootEpicOf, type Job, type Project,
+  getJob, getProject, getSetting, listJobsByStatus, listProjects, updateUsage, patchJob, patchJobIf,
+  updateProject, rootEpicOf, type Job, type JobStatus, type Project,
 } from "./db";
 import { emitOutput, emitChat } from "./events";
 import { updateStatus } from "./status";
@@ -22,6 +23,9 @@ import { scheduleDelegationCheck } from "./delegator-scheduler";
 const MAX_CONCURRENT = Number(process.env.FACTORY_MAX_CONCURRENT ?? 3);
 const queue: string[] = [];
 const active = new Set<string>();
+// Set during graceful shutdown: queued work stays queued (recovered next boot)
+// instead of starting an agent that is about to be killed.
+let draining = false;
 
 export function enqueue(jobId: string): void {
   if (active.has(jobId) || queue.includes(jobId)) return;
@@ -30,13 +34,24 @@ export function enqueue(jobId: string): void {
 }
 
 function pump(): void {
-  while (active.size < MAX_CONCURRENT && queue.length > 0) {
+  while (!draining && active.size < MAX_CONCURRENT && queue.length > 0) {
     const jobId = queue.shift()!;
     active.add(jobId);
     void startJob(jobId).finally(() => {
       active.delete(jobId);
       pump();
     });
+  }
+}
+
+/** Graceful-shutdown half of crash recovery: stop dispatching, then put every
+ *  in-flight job back to "queued" so the next boot resumes it explicitly
+ *  (rather than relying on the orphan sweep). Agent processes are killed
+ *  separately via killAllClaudeProcs(). */
+export async function drainForShutdown(): Promise<void> {
+  draining = true;
+  for (const jobId of [...processing]) {
+    await patchJobIf(jobId, { status: "queued" }, { whereStatus: "running" }).catch(warn(`requeue ${jobId} on shutdown`));
   }
 }
 
@@ -48,11 +63,45 @@ export async function pickupQueued(): Promise<void> {
 }
 
 /** Recover jobs orphaned by a crash: anything stuck "running" can't really be in
- *  flight (this process just booted), so requeue it. */
+ *  flight (this process just booted), so requeue it. Jobs paused on a question
+ *  (waiting_for_input / clarifying) keep their status — their sessions rehydrate
+ *  lazily on the next reply — but a recorded worktree that no longer exists is
+ *  cleared so continueJob recreates one instead of failing. */
 export async function recoverOrphans(): Promise<void> {
   for (const job of await listJobsByStatus("running")) {
-    await updateStatus(job.id, "queued").catch(() => {});
+    await updateStatus(job.id, "queued").catch(warn(`requeue orphan ${job.id}`));
     enqueue(job.id);
+  }
+  for (const status of ["waiting_for_input", "clarifying"] as const) {
+    for (const job of await listJobsByStatus(status)) {
+      if (job.worktreePath && !fs.existsSync(job.worktreePath)) {
+        await patchJob(job.id, { worktreePath: "" }).catch(warn(`clear stale worktree on ${job.id}`));
+      }
+      log(job.id, "Engine restarted — reply in the chat panel to resume.");
+    }
+  }
+  await sweepOrphanWorktrees().catch(warn("worktree sweep"));
+}
+
+/** Remove .worktrees/ entries whose job is finished or gone — the disk residue
+ *  of crashes (a job's cleanup `finally` never ran). Worktrees of live jobs
+ *  (resumable, queued, mid-delegation) are kept. */
+async function sweepOrphanWorktrees(): Promise<void> {
+  const KEEP = new Set<JobStatus>([
+    "pending", "queued", "running", "waiting_for_input", "clarifying", "plan_review", "delegating",
+  ]);
+  for (const project of await listProjects()) {
+    if (!project.localPath) continue;
+    const dir = path.join(project.localPath, ".worktrees");
+    let entries: string[] = [];
+    try { entries = fs.readdirSync(dir); } catch { continue; /* no worktrees dir */ }
+    for (const entry of entries) {
+      // Entries are <jobId>, <jobId>-plan, <jobId>-discovery, or epic-<epicId>.
+      const jobId = entry.replace(/^epic-/, "").replace(/-(plan|discovery)$/, "");
+      const job = await getJob(jobId).catch(() => null);
+      if (job && KEEP.has(job.status)) continue;
+      removeWorktree(project.localPath, path.join(dir, entry));
+    }
   }
 }
 
@@ -110,6 +159,13 @@ const projectSessions = new Map<string, ProjectSession>();
 
 function log(jobId: string, msg: string) {
   emitOutput(jobId, `[factory] ${msg}\n`);
+}
+
+/** Catch handler for best-effort writes that must not crash the caller but
+ *  should never disappear silently — a failed status/session save here is the
+ *  root cause of "job stuck forever" reports. */
+function warn(context: string): (err: unknown) => void {
+  return (err) => console.error(`[factory] ${context} failed: ${err}`);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -285,7 +341,7 @@ export async function startJob(jobId: string): Promise<void> {
 
     let session = createClaudeSession(worktreePath, resumeId, opts);
     activeSessions.set(jobId, session);
-    session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+    session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(warn(`save sessionId for ${jobId}`)); });
     session.onChunk((text) => emitOutput(jobId, text));
 
     const baseRules = project.agentRules ? `${project.agentRules}\n\n` : "";
@@ -310,7 +366,7 @@ export async function startJob(jobId: string): Promise<void> {
       cleanupSession(jobId);
       session = createClaudeSession(worktreePath, undefined, opts);
       activeSessions.set(jobId, session);
-      session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+      session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(warn(`save sessionId for ${jobId}`)); });
       session.onChunk((text) => emitOutput(jobId, text));
       const freshContext = `${baseRules}${claudeHint}${effortNote}${repoMap}\n---\n\n`;
       turn = await session.sendMessage(freshContext + promptWithImages);
@@ -329,7 +385,7 @@ export async function startJob(jobId: string): Promise<void> {
     const msg = String(err);
     console.error(`[startJob] unhandled error for ${jobId}: ${msg}`);
     log(jobId, `FATAL: ${msg}`);
-    await updateStatus(jobId, "failed", { error: msg }).catch(() => {});
+    await updateStatus(jobId, "failed", { error: msg }).catch(warn(`mark ${jobId} failed`));
     await sendJobNotification({ jobId, title: jobTitle, status: "failed", projectName: project?.name, error: msg }).catch(() => {});
     if (worktreePath && project) {
       try { removeWorktree(project.localPath, worktreePath); } catch { /* ignore */ }
@@ -539,7 +595,7 @@ async function drainReplies(jobId: string): Promise<void> {
     const msg = String(err);
     log(jobId, `FATAL: ${msg}`);
     cleanupSession(jobId);
-    await updateStatus(jobId, "failed", { error: msg }).catch(() => {});
+    await updateStatus(jobId, "failed", { error: msg }).catch(warn(`mark ${jobId} failed`));
   } finally {
     processing.delete(jobId);
     const c = liveContext.get(jobId);
@@ -595,7 +651,7 @@ async function continueJob(jobId: string, text: string, images: string[]): Promi
 
   const session = createClaudeSession(worktreePath, resumeId, sessionOptsFor(job));
   activeSessions.set(jobId, session);
-  session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(() => {}); });
+  session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(warn(`save sessionId for ${jobId}`)); });
   session.onChunk((t) => emitOutput(jobId, t));
 
   liveContext.set(jobId, {
