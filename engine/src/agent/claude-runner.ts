@@ -223,13 +223,3 @@ export function createClaudeSession(cwd: string, resumeSessionId?: string, optio
     },
   };
 }
-
-/** Write a base64 image to a temp file, return path */
-function saveImageFile(dataUrl: string): string | null {
-  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-  if (!matches) return null;
-  const [, ext, b64] = matches;
-  const tmpPath = path.join(os.tmpdir(), `factory-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
-  fs.writeFileSync(tmpPath, Buffer.from(b64, "base64"));
-  return tmpPath;
-}

@@ -101,10 +101,10 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
   );
 
   function toggleGroup(key: string) {
-    setCollapsed((c) => { const n = new Set(c); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    setCollapsed((c) => { const n = new Set(c); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   }
   const toggleExpand = useCallback((id: string) => {
-    setExpanded((e) => { const n = new Set(e); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setExpanded((e) => { const n = new Set(e); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }, []);
 
   function priorityForAppend(parentId: string): number {

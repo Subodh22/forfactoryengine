@@ -152,7 +152,7 @@ export function startServer(port: number): http.Server {
       if (method === "POST" && pathname === "/api/projects") {
         const b = await readBody(req);
         const name = String(b.name ?? "").trim();
-        let localPath = String(b.localPath ?? "").trim();
+        const localPath = String(b.localPath ?? "").trim();
         const repo = String(b.repo ?? "").trim();
         if (!name) return sendJson(res, 400, { error: "name required" });
         if (!localPath && !repo) return sendJson(res, 400, { error: "localPath or repo required" });

@@ -8,6 +8,7 @@
     "start": "tsx src/index.ts",
     "build": "node build.mjs",
     "start:dist": "node dist/factory.mjs",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@types/ws": "^8.5.13",
     "esbuild": "^0.24.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.8"
   }
 }

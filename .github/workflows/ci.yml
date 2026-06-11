@@ -1,0 +1,29 @@
+name: CI
+
+# Quality gate for every PR and push to main: typecheck all three packages,
+# run the engine test suite, lint, and prove both UIs + the engine still build.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            engine/package-lock.json
+            ui/package-lock.json
+            web/package-lock.json
+      - run: npm run setup
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:web

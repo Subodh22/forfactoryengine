@@ -32,7 +32,7 @@ function log(jobId: string, msg: string) {
 }
 
 /** Read a JSON artifact the model wrote under .factory/, falling back to its reply. */
-function readJsonArtifact(worktreePath: string, file: string, assistantText: string): unknown {
+export function readJsonArtifact(worktreePath: string, file: string, assistantText: string): unknown {
   let raw: string | null = null;
   try {
     const p = path.join(worktreePath, ".factory", file);

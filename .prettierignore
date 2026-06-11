@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.next/
+desktop/out/
+desktop/resources/
+cli/engine/
+cli/ui/
+package-lock.json
+*.md

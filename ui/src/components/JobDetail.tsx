@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, X, RotateCcw, Plus, Send, Monitor, Play, ChevronDown, ChevronUp, Square } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Monitor, ChevronDown, ChevronUp, Square } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, approvePlan, cancelJob, cancelEpic } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -42,8 +42,6 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
-  const [promptDraft, setPromptDraft] = useState("");
-  const [addingPrompt, setAddingPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isRunning = job?.status === "running";
@@ -61,16 +59,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
-  const [approving, setApproving] = useState(false);
   const [showError, setShowError] = useState(false);
-
-  async function handleApprove() {
-    if (approving) return;
-    setApproving(true);
-    try { await approvePlan(jobId); toast.success("Approved — agents are starting"); }
-    catch (err) { toast.error(String(err instanceof Error ? err.message : err) || "Could not approve"); }
-    finally { setApproving(false); }
-  }
 
   const [activeTab, setActiveTab] = useState<"output" | "chat">("output");
   const [unseenChat, setUnseenChat] = useState(false);
@@ -199,20 +188,6 @@ export function JobDetail({ jobId, onRedo }: Props) {
       toast.error(String(err instanceof Error ? err.message : err) || "Could not reach the engine");
     } finally {
       setSending(false);
-    }
-  }
-
-  async function handleAddPrompt(e: React.FormEvent) {
-    e.preventDefault();
-    if ((!promptDraft.trim() && !attachedFiles.length) || addingPrompt) return;
-    setAddingPrompt(true);
-    try {
-      await appendPrompt(jobId, promptDraft.trim(), attachedFiles.length ? attachedFiles : undefined);
-      setPromptDraft("");
-      setAttachedFiles([]);
-      toast.success("Added to prompt");
-    } finally {
-      setAddingPrompt(false);
     }
   }
 

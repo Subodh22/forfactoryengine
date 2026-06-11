@@ -32,6 +32,12 @@ ENV PORT=8787 \
 EXPOSE 8787
 VOLUME ["/data"]
 
+# Container orchestrators (Fly, compose) get readiness from the existing
+# /api/health endpoint. Stays on root: the engine's whole job is running agents
+# with shell access, and /data volume mounts (Docker, Fly) arrive root-owned.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
+  CMD node -e "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+
 # Claude auth: the container needs a signed-in Claude CLI. Mount your local
 # credentials read-only, e.g.:
 #   docker run -e FACTORY_AUTH_TOKEN=... -v ~/.claude:/root/.claude:ro -v factory:/data -p 8787:8787 factory

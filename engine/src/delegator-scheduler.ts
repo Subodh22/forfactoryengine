@@ -18,7 +18,7 @@ function log(jobId: string, msg: string) {
   emitOutput(jobId, `[factory] ${msg}\n`);
 }
 
-function pathsOverlap(a: string[], b: string[]): boolean {
+export function pathsOverlap(a: string[], b: string[]): boolean {
   for (const x of a) {
     for (const y of b) {
       if (x === y || x.startsWith(`${y}/`) || y.startsWith(`${x}/`)) return true;
