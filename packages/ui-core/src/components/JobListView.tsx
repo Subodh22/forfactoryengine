@@ -22,7 +22,7 @@ function optimisticJob(id: string, projectId: string, parentJobId: string, prior
     id, projectId, title, prompt: title, images, status: "pending", kind: "task",
     parentJobId, priority, touchedPaths: [], blockedBy: [], assignee,
     worktreePath: "", branch: "", prUrl: "", prNumber: 0, error: "", sessionId: "",
-    delegatorPlan: "", needsApproval: false, model: "", effort: "",
+    commitSha: "", delegatorPlan: "", needsApproval: false, model: "", effort: "",
     inputTokens: 0, outputTokens: 0, costUsd: 0, mergedToMain: false,
     startedAt: 0, completedAt: 0, createdAt: Date.now(),
   };

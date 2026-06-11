@@ -46,6 +46,7 @@ export interface Job {
   prNumber: number;
   error: string;
   sessionId: string;
+  commitSha: string;
   delegatorPlan: string;
   needsApproval: boolean;
   model: string;
@@ -71,4 +72,12 @@ export interface ChatMsg {
   role: "assistant" | "user";
   text: string;
   images?: string[];
+}
+
+/** GET /api/jobs/:id/diff — what a job changed, across its whole lifecycle. */
+export interface JobDiff {
+  source: "worktree" | "commit" | "branch" | "none";
+  stat: string;
+  patch: string;
+  truncated: boolean;
 }

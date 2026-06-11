@@ -474,7 +474,7 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
       } else {
         log(jobId, "No changes to merge.");
       }
-      await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
+      await updateStatus(jobId, "completed", { touchedPaths: changedFiles, commitSha: committed ?? "" });
       log(jobId, "Subtask completed.");
     } catch (err) {
       const msg = String(err);
@@ -497,7 +497,7 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
         pushBranch(worktreePath, branch);
         const [owner, repo] = project.repo.split("/");
         const pr = await createPR(token, owner!, repo!, branch, project.defaultBranch, title, "Automated by Factory.");
-        await updateStatus(jobId, "completed", { touchedPaths: changedFiles, prUrl: pr.url, prNumber: pr.number });
+        await updateStatus(jobId, "completed", { touchedPaths: changedFiles, prUrl: pr.url, prNumber: pr.number, commitSha: committed });
         log(jobId, `Opened PR #${pr.number}: ${pr.url}`);
       } else {
         await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
@@ -508,9 +508,9 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
       // Serialize per repo: only one job integrates into the default branch at a
       // time, and it rebases onto the freshly-pushed tip first, so out-of-order
       // completions can't cause non-fast-forward push rejections.
-      await withPushLock(project.localPath, async () =>
+      const pushedSha = await withPushLock(project.localPath, async () =>
         commitAndPushDirect(worktreePath, `feat: ${title}\n\nAutomated by Factory`, project.defaultBranch));
-      await updateStatus(jobId, "completed", { touchedPaths: changedFiles, mergedToMain: true });
+      await updateStatus(jobId, "completed", { touchedPaths: changedFiles, mergedToMain: true, commitSha: pushedSha });
       log(jobId, `Merged to ${project.defaultBranch}.`);
     }
     log(jobId, "Job completed successfully.");

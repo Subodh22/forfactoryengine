@@ -27,6 +27,7 @@ import { scheduleDelegationCheck, finalizeEpic } from "./delegator-scheduler";
 import { getClaudeUsage } from "./usage";
 import { checkAuth, authEnabled } from "./auth";
 import { getUser, fetchUserRepos, createRepo } from "./agent/github";
+import { getJobDiff } from "./agent/worktree";
 import { oauthConfigured, OAUTH_CALLBACK, APP_URL } from "./config";
 import { newState, consumeState, authorizeUrl, exchangeCode } from "./oauth";
 
@@ -373,6 +374,15 @@ export function startServer(port: number): http.Server {
           // Persisted agent log — fetched on open so finished jobs and reloads
           // show full history; the live tail continues over the WebSocket.
           return sendJson(res, 200, { output: readOutput(id) });
+        }
+        if (method === "GET" && action === "diff") {
+          // What this job changed: live worktree diff while running, the
+          // recorded commit (or surviving branch) after completion.
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "not found" });
+          const project = await getProject(job.projectId);
+          if (!project?.localPath) return sendJson(res, 200, { source: "none", stat: "", patch: "", truncated: false });
+          return sendJson(res, 200, getJobDiff(project.localPath, job, project.defaultBranch));
         }
         if (method === "PATCH" && !action) {
           // In-place edits to a plan task: rename, re-prompt, reassign, or

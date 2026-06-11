@@ -12,6 +12,7 @@ import { CreateProject } from "@/components/CreateProject";
 import { AddProjectModal } from "@/components/AddProjectModal";
 import { EnvPanel } from "@/components/EnvPanel";
 import { JobNotifications } from "@/components/JobNotifications";
+import { CommandPalette, OPEN_PALETTE_EVENT } from "@/components/CommandPalette";
 import { UsagePanel, useClaudeUsage, resetLabel } from "@/components/UsagePanel";
 import { useFactory, useProjects, useJobs, useTodayStats } from "@/lib/data";
 import { removeProject, connectGithub } from "@/lib/mutations";
@@ -116,6 +117,13 @@ export function App() {
   return (
     <div className="h-screen flex flex-col bg-transparent text-ink overflow-hidden">
       <JobNotifications />
+      <CommandPalette
+        projects={projects}
+        jobs={allJobsGlobal}
+        onSelectProject={setActiveProject}
+        onSelectJob={(job) => { setActiveProject(job.projectId); setSelectedJob(job.id); setTab("board"); }}
+        onSetTab={setTab}
+      />
 
       {/* ───────── TOP BAR ───────── */}
       <header className="flex items-center gap-4 px-3 sm:px-[22px] h-[62px] border-b-4 border-ink bg-concrete flex-shrink-0">
@@ -151,6 +159,13 @@ export function App() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PALETTE_EVENT))}
+            className="hidden sm:flex items-center gap-1.5 font-data text-[11px] px-2.5 py-1 border-2 border-ink uppercase bg-concrete hover:bg-concrete-2 transition-colors"
+            title="Jump to any job or project (⌘K)"
+          >
+            Search<span className="text-muted">⌘K</span>
+          </button>
           {runningCount > 0 && (
             <button onClick={() => setTab("agents")} className="flex items-center gap-1.5 px-2.5 py-1 font-data text-[11px] bg-ink text-concrete uppercase">
               <span className="w-1.5 h-1.5 bg-concrete animate-pulse" />{runningCount} running

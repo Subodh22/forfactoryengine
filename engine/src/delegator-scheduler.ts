@@ -1,5 +1,5 @@
 import {
-  ensureEpicWorktree, pushBranch, pushBranchToDefault, removeWorktree, deleteBranch,
+  ensureEpicWorktree, pushBranch, pushBranchToDefault, removeWorktree, deleteBranch, headSha,
 } from "./agent/worktree";
 import { createPR } from "./agent/github";
 import { emitOutput } from "./events";
@@ -138,17 +138,20 @@ export async function finalizeEpic(epic: Job): Promise<void> {
   } catch { /* use default body */ }
 
   try {
+    // Pin the epic branch tip before cleanup deletes the branch — the diff
+    // endpoint reconstructs the epic's work from this commit.
+    const epicSha = headSha(worktreePath);
     if (project.githubToken && project.repo.includes("/")) {
       log(epic.id, `Pushing ${branch} and opening a PR...`);
       pushBranch(worktreePath, branch);
       const [owner, repo] = project.repo.split("/");
       const pr = await createPR(project.githubToken, owner!, repo!, branch, project.defaultBranch, epic.title, body);
-      await updateStatus(epic.id, "completed", { prUrl: pr.url, prNumber: pr.number });
+      await updateStatus(epic.id, "completed", { prUrl: pr.url, prNumber: pr.number, commitSha: epicSha });
       log(epic.id, `Opened PR #${pr.number}: ${pr.url}`);
     } else {
       log(epic.id, `No GitHub token — pushing ${branch} to ${project.defaultBranch}...`);
       pushBranchToDefault(worktreePath, project.defaultBranch);
-      await updateStatus(epic.id, "completed", { mergedToMain: true });
+      await updateStatus(epic.id, "completed", { mergedToMain: true, commitSha: epicSha });
       log(epic.id, `Merged epic to ${project.defaultBranch}.`);
     }
     await sendJobNotification({ jobId: epic.id, title: epic.title, status: "completed", projectName: project.name }).catch(() => {});

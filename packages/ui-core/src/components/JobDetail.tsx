@@ -5,6 +5,7 @@ import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Moni
 import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
+import { DiffViewer } from "./DiffViewer";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
 import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
@@ -62,7 +63,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const [sending, setSending] = useState(false);
   const [showError, setShowError] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"output" | "chat">("output");
+  const [activeTab, setActiveTab] = useState<"output" | "chat" | "changes">("output");
   const [unseenChat, setUnseenChat] = useState(false);
   const [unseenOutput, setUnseenOutput] = useState(false);
   const prevMessagesLen = useRef(messages.length);
@@ -298,6 +299,9 @@ export function JobDetail({ jobId, onRedo }: Props) {
             Chat
             {unseenChat && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
           </button>
+          <button onClick={() => setActiveTab("changes")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "changes" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
+            Changes
+          </button>
           <span className="flex-1" />
           {isRunning && isStuck ? (
             <span className="flex items-center gap-1.5 font-data text-[10px] text-red-400"><span className="w-1.5 h-1.5 bg-red-400 animate-pulse flex-shrink-0" />no output {silentSecs}s</span>
@@ -310,7 +314,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
           ) : null}
         </div>
 
-        {activeTab === "output" ? (
+        {activeTab === "output" && (
           <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
             {output ? (
               <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
@@ -326,7 +330,13 @@ export function JobDetail({ jobId, onRedo }: Props) {
             )}
             <div ref={bottomRef} />
           </div>
-        ) : (
+        )}
+        {activeTab === "changes" && (
+          <div className="flex-1 overflow-y-auto bg-ink min-h-0">
+            <DiffViewer jobId={jobId} refreshKey={job.status} />
+          </div>
+        )}
+        {activeTab === "chat" && (
           <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
             {messages.length > 0 ? (
               <div className="space-y-3">

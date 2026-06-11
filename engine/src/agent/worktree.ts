@@ -167,8 +167,9 @@ export function getChangedFiles(worktreePath: string): string[] {
  * Commit all changes on the current worktree branch, then push them directly
  * to the repo's default branch — no PR needed.
  * Fetches latest remote first so the push fast-forwards cleanly.
+ * Returns the pushed commit sha (post-rebase).
  */
-export function commitAndPushDirect(worktreePath: string, message: string, defaultBranch: string) {
+export function commitAndPushDirect(worktreePath: string, message: string, defaultBranch: string): string {
   git(["add", "-A"], worktreePath);
   const commit = git(["commit", "-m", message], worktreePath);
   if (commit.status !== 0 && !commit.stdout.includes("nothing to commit")) {
@@ -188,6 +189,7 @@ export function commitAndPushDirect(worktreePath: string, message: string, defau
   if (push.status !== 0) {
     throw new Error(`push to ${defaultBranch} failed: ${push.stderr}`);
   }
+  return headSha(worktreePath);
 }
 
 // ── Delegator: epic integration branch ─────────────────────────────────────
@@ -235,16 +237,23 @@ export function ensureEpicWorktree(
   return { worktreePath, branch };
 }
 
+/** The current commit id of a worktree — recorded on jobs at completion so the
+ *  diff endpoint can show their work after the worktree/branch is gone. */
+export function headSha(worktreePath: string): string {
+  const r = git(["rev-parse", "HEAD"], worktreePath);
+  return r.status === 0 ? r.stdout.trim() : "";
+}
+
 /** Commit all changes on the current worktree branch. No push, no rebase.
- *  Returns false when there was nothing to commit. */
-export function commitOnly(worktreePath: string, message: string): boolean {
+ *  Returns the commit sha, or null when there was nothing to commit. */
+export function commitOnly(worktreePath: string, message: string): string | null {
   git(["add", "-A"], worktreePath);
   const commit = git(["commit", "-m", message], worktreePath);
   if (commit.status !== 0) {
-    if (commit.stdout.includes("nothing to commit")) return false;
+    if (commit.stdout.includes("nothing to commit")) return null;
     throw new Error(`git commit failed: ${commit.stderr || commit.stdout}`);
   }
-  return true;
+  return headSha(worktreePath);
 }
 
 /** Merge a child branch into the epic branch checked out at `epicWorktreePath`.
@@ -282,4 +291,70 @@ export function deleteBranch(repoPath: string, branch: string) {
   } catch {
     // best-effort cleanup
   }
+}
+
+// ── Job diff (the "Changes" tab) ─────────────────────────────────────────────
+
+export interface JobDiff {
+  /** Where the diff came from: a live worktree (in-progress, uncommitted),
+   *  the commit recorded at completion, a still-existing branch vs the default
+   *  base, or nothing recoverable. */
+  source: "worktree" | "commit" | "branch" | "none";
+  stat: string;
+  patch: string;
+  truncated: boolean;
+}
+
+const MAX_PATCH_BYTES = 500_000;
+
+/** Best-effort reconstruction of "what did this job change", across the job's
+ *  whole lifecycle. Read-only — never mutates the repo or any worktree. */
+export function getJobDiff(
+  repoPath: string,
+  job: { worktreePath?: string; branch?: string; commitSha?: string },
+  defaultBranch: string,
+): JobDiff {
+  const repo = resolveRepo(repoPath);
+  const cap = (patch: string): { patch: string; truncated: boolean } =>
+    patch.length > MAX_PATCH_BYTES
+      ? { patch: `${patch.slice(0, MAX_PATCH_BYTES)}\n… diff truncated …\n`, truncated: true }
+      : { patch, truncated: false };
+
+  // 1. Live worktree: uncommitted work in progress, plus brand-new files
+  //    (git diff HEAD alone omits untracked paths).
+  if (job.worktreePath && repoExists(job.worktreePath)) {
+    const stat = git(["diff", "HEAD", "--stat"], job.worktreePath).stdout;
+    let patch = git(["diff", "HEAD"], job.worktreePath).stdout;
+    const untracked = git(["ls-files", "--others", "--exclude-standard"], job.worktreePath)
+      .stdout.split("\n").filter(Boolean).slice(0, 50);
+    for (const f of untracked) {
+      // --no-index exits 1 when the files differ — that's the success case here.
+      patch += git(["diff", "--no-index", "--", "/dev/null", f], job.worktreePath).stdout;
+    }
+    if (patch.trim()) return { source: "worktree", stat, ...cap(patch) };
+    // No pending changes (e.g. already committed) — fall through.
+  }
+
+  // 2. Completed work: the exact commit recorded at completion survives
+  //    worktree cleanup and branch deletion.
+  if (job.commitSha) {
+    const show = git(["show", "--format=", "--patch", job.commitSha], repo);
+    if (show.status === 0 && show.stdout.trim()) {
+      const stat = git(["show", "--format=", "--stat", job.commitSha], repo).stdout;
+      return { source: "commit", stat, ...cap(show.stdout) };
+    }
+  }
+
+  // 3. A branch that still exists (e.g. a PR or epic branch): everything it
+  //    adds on top of the merge-base with the default branch.
+  if (job.branch && git(["rev-parse", "--verify", job.branch], repo).status === 0) {
+    const range = `${defaultBranch}...${job.branch}`;
+    const patch = git(["diff", range], repo).stdout;
+    if (patch.trim()) {
+      const stat = git(["diff", range, "--stat"], repo).stdout;
+      return { source: "branch", stat, ...cap(patch) };
+    }
+  }
+
+  return { source: "none", stat: "", patch: "", truncated: false };
 }

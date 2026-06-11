@@ -71,6 +71,9 @@ export interface Job {
   prNumber: number;
   error: string;
   sessionId: string;
+  /** The commit recorded when the job's work landed — lets the diff endpoint
+   *  show "what this job changed" long after its worktree/branch is gone. */
+  commitSha: string;
   delegatorPlan: string;
   needsApproval: boolean;
   model: string;
@@ -120,6 +123,7 @@ export async function initSchema(): Promise<void> {
       pr_number      INTEGER NOT NULL DEFAULT 0,
       error          TEXT NOT NULL DEFAULT '',
       session_id     TEXT NOT NULL DEFAULT '',
+      commit_sha     TEXT NOT NULL DEFAULT '',
       delegator_plan TEXT NOT NULL DEFAULT '',
       needs_approval INTEGER NOT NULL DEFAULT 0,
       model          TEXT NOT NULL DEFAULT '',
@@ -163,6 +167,7 @@ export async function initSchema(): Promise<void> {
     ["started_at", "INTEGER NOT NULL DEFAULT 0"],
     ["completed_at", "INTEGER NOT NULL DEFAULT 0"],
     ["assignee", "TEXT NOT NULL DEFAULT ''"],
+    ["commit_sha", "TEXT NOT NULL DEFAULT ''"],
   ];
   for (const [col, def] of jobCols) {
     try { await db.execute(`ALTER TABLE jobs ADD COLUMN ${col} ${def}`); } catch { /* exists */ }
@@ -307,6 +312,7 @@ function rowToJob(r: Row): Job {
     prNumber: Number(r.pr_number ?? 0),
     error: String(r.error ?? ""),
     sessionId: String(r.session_id ?? ""),
+    commitSha: String(r.commit_sha ?? ""),
     delegatorPlan: String(r.delegator_plan ?? ""),
     needsApproval: Boolean(Number(r.needs_approval ?? 0)),
     model: String(r.model ?? ""),
@@ -370,6 +376,7 @@ export async function createJob(input: {
     prNumber: 0,
     error: "",
     sessionId: "",
+    commitSha: "",
     delegatorPlan: input.delegatorPlan ?? "",
     needsApproval: input.needsApproval ?? false,
     model: input.model ?? "",
@@ -397,7 +404,7 @@ export async function createJob(input: {
 
 const JOB_COLUMNS: Record<string, string> = {
   title: "title", prompt: "prompt", status: "status", branch: "branch", prUrl: "pr_url",
-  prNumber: "pr_number", error: "error", worktreePath: "worktree_path", sessionId: "session_id",
+  prNumber: "pr_number", error: "error", worktreePath: "worktree_path", sessionId: "session_id", commitSha: "commit_sha",
   delegatorPlan: "delegator_plan", priority: "priority", parentJobId: "parent_job_id",
   startedAt: "started_at", completedAt: "completed_at", inputTokens: "input_tokens",
   outputTokens: "output_tokens", costUsd: "cost_usd", assignee: "assignee",
