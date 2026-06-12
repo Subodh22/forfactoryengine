@@ -45,6 +45,11 @@ export interface Job {
   prUrl: string;
   prNumber: number;
   error: string;
+  pushState: "" | "pushing" | "pushed" | "needs_help";
+  pushAttempts: number;
+  pushError: string;
+  pushedSha: string;
+  pushedTo: string;
   sessionId: string;
   commitSha: string;
   delegatorPlan: string;

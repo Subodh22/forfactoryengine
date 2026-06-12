@@ -1,4 +1,4 @@
-export type JobOutcome = "completed" | "failed";
+export type JobOutcome = "completed" | "failed" | "needs_push_help";
 
 interface NotifyOpts {
   jobId: string;
@@ -22,13 +22,20 @@ export async function sendJobNotification(opts: NotifyOpts): Promise<void> {
   const from = process.env.RESEND_FROM || "Factory <onboarding@resend.dev>";
   const appUrl = process.env.FACTORY_APP_URL || "http://localhost:5173";
   const label = opts.title || opts.jobId;
-  const verb = opts.status === "completed" ? "completed" : "failed";
+  const verb = opts.status === "completed" ? "completed"
+    : opts.status === "needs_push_help" ? "needs your help pushing"
+    : "failed";
   const subject = `[Factory] Job ${verb}: ${label}`;
 
   const lines: string[] = [`Job "${label}" ${verb}.`];
   if (opts.projectName) lines.push(`Project: ${opts.projectName}`);
   if (opts.status === "completed" && opts.changedFiles?.length) {
     lines.push(`Changed files: ${opts.changedFiles.join(", ")}`);
+  }
+  if (opts.status === "needs_push_help") {
+    lines.push("The work is committed but could not be pushed after several attempts.");
+    if (opts.error) lines.push(`Push error: ${opts.error}`);
+    lines.push("Fix the cause, then hit RETRY PUSH on the job card.");
   }
   if (opts.status === "failed" && opts.error) lines.push(`Error: ${opts.error}`);
   lines.push(`Open Factory: ${appUrl}`);

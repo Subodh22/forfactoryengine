@@ -32,6 +32,7 @@ npm run typecheck      # typecheck engine + ui + web
 - `engine/src/delegator.ts` — epic planning (decomposes task into subtask DAG)
 - `engine/src/delegator-scheduler.ts` — promotes/finalizes delegated children
 - `engine/src/agent/claude-runner.ts` — ClaudeSession wrapper around Claude CLI
+- `engine/src/push.ts` — push pipeline: per-repo push lock, retries with backoff, agent conflict resolution, `needs_help` escalation + retry-push endpoint; `pushState` lives on the job separately from `status`
 - `engine/src/events.ts` — WebSocket event bus (output, chat, term)
 - Engine is the single source of truth — owns libSQL DB, runs Claude agents in git worktrees, broadcasts over WebSocket
 - Both UIs are thin clients: REST for mutations, WebSocket for live updates

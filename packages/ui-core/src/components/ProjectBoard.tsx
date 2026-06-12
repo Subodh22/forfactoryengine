@@ -3,6 +3,7 @@ import { useState } from "react";
 import { LayoutGrid, List as ListIcon } from "lucide-react";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { JobListView } from "@/components/JobListView";
+import { PushHelpBanner } from "@/components/PushHelpBanner";
 
 // The main Board tab: a ClickUp-style List | Board toggle over the project's
 // jobs. Board is the existing Kanban; List is a grouped, inline-editable list
@@ -12,6 +13,7 @@ export function ProjectBoard({ projectId, onSelectJob }: { projectId?: string; o
 
   return (
     <div className="h-full flex flex-col gap-3">
+      <PushHelpBanner projectId={projectId} />
       <div className="flex border-2 border-ink w-max">
         <button
           onClick={() => setView("list")}

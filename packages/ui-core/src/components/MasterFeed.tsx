@@ -1,5 +1,6 @@
 "use client";
 import { StatusBadge } from "./StatusBadge";
+import { PushChip } from "./PushChip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDistanceToNow } from "./time";
 import { useJobs, useProjects } from "@/lib/data";
@@ -59,12 +60,7 @@ export function MasterFeed({ projectId, onSelectJob }: Props) {
                 <div className="flex items-center gap-2 font-data text-[10px] text-muted">
                   {job.kind === "epic" && <span className="border border-ink px-1 uppercase bg-[#e0a32e]/25 text-ink">Epic</span>}
                   <StatusBadge status={job.status} />
-                  {job.mergedToMain && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#1f7a3d] flex-shrink-0" title="Merged to main" />
-                  )}
-                  {!job.mergedToMain && job.prUrl && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#e0a32e] flex-shrink-0" title="Pushed to PR" />
-                  )}
+                  <PushChip job={job} />
                   {!projectId && project && <span className="border border-ink px-1.5 uppercase">{project.name}</span>}
                   <span>{formatDistanceToNow(job.createdAt)}</span>
                   {job.status === "running" && job.startedAt > 0 && (

@@ -1,7 +1,5 @@
-import {
-  ensureEpicWorktree, pushBranch, pushBranchToDefault, removeWorktree, deleteBranch, headSha,
-} from "./agent/worktree";
-import { createPR } from "./agent/github";
+import { ensureEpicWorktree, removeWorktree, deleteBranch } from "./agent/worktree";
+import { finalizeJobPush } from "./push";
 import { emitOutput } from "./events";
 import { sendJobNotification } from "./notify";
 import { updateStatus, broadcastJob } from "./status";
@@ -126,45 +124,27 @@ export async function finalizeEpic(epic: Job): Promise<void> {
 
   const { worktreePath, branch } = ensureEpicWorktree(project.localPath, epic.id, project.defaultBranch);
 
-  let body = "Delegated epic completed by Factory.";
   try {
-    const plan = epic.delegatorPlan ? JSON.parse(epic.delegatorPlan) : null;
-    if (plan?.subtasks?.length) {
-      body += "\n\nSubtasks:\n" + plan.subtasks
-        .map((s: { title: string; touchedPaths?: string[] }) =>
-          `- ${s.title}${s.touchedPaths?.length ? ` (${s.touchedPaths.join(", ")})` : ""}`)
-        .join("\n");
-    }
-  } catch { /* use default body */ }
-
-  try {
-    // Pin the epic branch tip before cleanup deletes the branch — the diff
-    // endpoint reconstructs the epic's work from this commit.
-    const epicSha = headSha(worktreePath);
-    if (project.githubToken && project.repo.includes("/")) {
-      log(epic.id, `Pushing ${branch} and opening a PR...`);
-      pushBranch(worktreePath, branch);
-      const [owner, repo] = project.repo.split("/");
-      const pr = await createPR(project.githubToken, owner!, repo!, branch, project.defaultBranch, epic.title, body);
-      await updateStatus(epic.id, "completed", { prUrl: pr.url, prNumber: pr.number, commitSha: epicSha });
-      log(epic.id, `Opened PR #${pr.number}: ${pr.url}`);
+    const outcome = await finalizeJobPush(epic.id, project, worktreePath, branch);
+    await updateStatus(epic.id, "completed");
+    if (outcome.ok) {
+      log(epic.id, `Epic finalized.`);
+      await sendJobNotification({ jobId: epic.id, title: epic.title, status: "completed", projectName: project.name }).catch(() => {});
+      try {
+        removeWorktree(project.localPath, worktreePath);
+        deleteBranch(project.localPath, branch);
+      } catch { /* best-effort */ }
     } else {
-      log(epic.id, `No GitHub token — pushing ${branch} to ${project.defaultBranch}...`);
-      pushBranchToDefault(worktreePath, project.defaultBranch);
-      await updateStatus(epic.id, "completed", { mergedToMain: true, commitSha: epicSha });
-      log(epic.id, `Merged epic to ${project.defaultBranch}.`);
+      // Keep the epic worktree + branch — RETRY PUSH finalizes from them.
+      log(epic.id, "Epic finished, but the push needs your help — see above.");
+      await sendJobNotification({ jobId: epic.id, title: epic.title, status: "needs_push_help", projectName: project.name, error: outcome.error }).catch(() => {});
     }
-    await sendJobNotification({ jobId: epic.id, title: epic.title, status: "completed", projectName: project.name }).catch(() => {});
   } catch (err) {
     const msg = String(err);
     log(epic.id, `ERROR finalizing epic: ${msg}`);
     await updateStatus(epic.id, "failed", { error: msg }).catch(() => {});
     throw err;
   } finally {
-    try {
-      removeWorktree(project.localPath, worktreePath);
-      deleteBranch(project.localPath, branch);
-    } catch { /* best-effort */ }
     finalizing.delete(epic.id);
   }
 }

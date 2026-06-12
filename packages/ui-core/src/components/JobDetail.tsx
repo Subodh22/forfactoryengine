@@ -1,13 +1,14 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Monitor, ChevronDown, ChevronUp, Square } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Monitor, ChevronDown, ChevronUp, Square, UploadCloud } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
+import { PushChip } from "./PushChip";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { DiffViewer } from "./DiffViewer";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -204,7 +205,10 @@ export function JobDetail({ jobId, onRedo }: Props) {
       <div className="p-4 border-b-4 border-ink flex-shrink-0 bg-concrete">
         <div className="flex items-start justify-between gap-3 mb-2">
           <h2 className="text-sm font-bold uppercase text-ink leading-snug">{job.title}</h2>
-          <StatusBadge status={job.status} />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <StatusBadge status={job.status} />
+            <PushChip job={job} />
+          </div>
         </div>
         <p className={`font-data text-[11px] text-muted mb-3 whitespace-pre-wrap ${isPending ? "" : "line-clamp-2"}`}>{job.prompt}</p>
 
@@ -379,6 +383,22 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={isPending ? "Add to prompt… (paste screenshots)" : isWaiting ? "Reply to Claude… (paste screenshots)" : isRunning ? "Queue a message… (paste screenshots)" : "Message Claude… (paste screenshots)"} onPaste={onPaste} className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow" autoFocus={isWaiting} />
             <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-3 py-2 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><Send className="w-3 h-3" />{sending ? "…" : "Send"}</button>
           </form>
+        </div>
+      )}
+
+      {job.pushState === "needs_help" && (
+        <div className="border-t-4 border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 mb-1.5">
+            <span className="font-data text-[10px] font-bold text-[#d6210f] uppercase tracking-widest">Push needs your help</span>
+            <button
+              onClick={async () => { await retryPush(job.id); toast.info("Retrying push — watch the push chip"); }}
+              className="flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase border-2 border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete transition-colors"
+            >
+              <UploadCloud className="w-2.5 h-2.5" /> Retry Push
+            </button>
+          </div>
+          <pre className="text-xs text-[#a8190b] font-mono whitespace-pre-wrap">{job.pushError}</pre>
+          <p className="font-data text-[10px] uppercase text-muted mt-1.5">The work is committed and safe in its worktree — fix the cause, then retry.</p>
         </div>
       )}
 

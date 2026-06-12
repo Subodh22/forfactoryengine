@@ -1,17 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  getJob, getProject, getSetting, listJobsByStatus, listProjects, updateUsage, patchJob, patchJobIf,
+  getJob, getProject, listJobsByStatus, listProjects, updateUsage, patchJob, patchJobIf,
   updateProject, rootEpicOf, type Job, type JobStatus, type Project,
 } from "./db";
 import { emitOutput, emitChat } from "./events";
 import { updateStatus } from "./status";
 import { createClaudeSession, type ClaudeSession, type ClaudeSessionOptions, type TurnResult } from "./agent/claude-runner";
 import {
-  createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect, ensureRepoCloned,
-  ensureEpicWorktree, commitOnly, mergeIntoBranch, pushBranch,
+  createWorktree, removeWorktree, getChangedFiles, ensureRepoCloned,
+  ensureEpicWorktree, commitOnly, mergeIntoBranch,
 } from "./agent/worktree";
-import { createPR } from "./agent/github";
+import { finalizeJobPush } from "./push";
 import { buildRepoMap } from "./agent/repo-map";
 import { parseDataUrl, safeFilename } from "./attachments";
 import { sendJobNotification } from "./notify";
@@ -141,15 +141,9 @@ function withEpicLock<T>(epicId: string, fn: () => Promise<T>): Promise<T> {
   return serialize(epicLocks, epicId, fn);
 }
 
-// Serialize direct pushes to a repo's default branch so concurrent jobs don't
-// race on commit→fetch→rebase→push. Without this, a job that fetched an older
-// main tip pushes after another job advanced it and gets rejected
-// (non-fast-forward). Keyed per repo path. Whoever holds the lock rebases onto
-// the freshly-pushed tip, so its push always fast-forwards.
-const pushLocks = new Map<string, Promise<unknown>>();
-function withPushLock<T>(repoPath: string, fn: () => Promise<T>): Promise<T> {
-  return serialize(pushLocks, repoPath, fn);
-}
+// Direct pushes to a repo's default branch are serialized inside the push
+// pipeline (see withRepoPushLock in push.ts), which owns retries, conflict
+// resolution and needs_help escalation.
 
 // Per-project session continuity — carry the session id across jobs so Claude
 // doesn't cold-start every task. Reset when tokens approach the cap.
@@ -487,40 +481,27 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
     return;
   }
 
-  // Plain job: open a PR if we have a GitHub repo + token, else push directly.
+  // Plain job: hand the commits to the push pipeline (PR flow or direct push,
+  // with retries + agent conflict resolution). The agent's work is done either
+  // way, so the job completes; a stuck push lives in pushState, not status.
   try {
-    const token = project.githubToken || (await getSetting("githubToken")) || "";
-    if (project.repo.includes("/") && token) {
-      log(jobId, `Committing and opening a PR…`);
-      const committed = commitOnly(worktreePath, `feat: ${title}\n\nAutomated by Factory`);
-      if (committed) {
-        pushBranch(worktreePath, branch);
-        const [owner, repo] = project.repo.split("/");
-        const pr = await createPR(token, owner!, repo!, branch, project.defaultBranch, title, "Automated by Factory.");
-        await updateStatus(jobId, "completed", { touchedPaths: changedFiles, prUrl: pr.url, prNumber: pr.number, commitSha: committed });
-        log(jobId, `Opened PR #${pr.number}: ${pr.url}`);
-      } else {
-        await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
-        log(jobId, "Nothing to commit.");
-      }
+    await patchJob(jobId, { touchedPaths: changedFiles });
+    const outcome = await finalizeJobPush(jobId, project, worktreePath, branch);
+    await updateStatus(jobId, "completed", { touchedPaths: changedFiles });
+    if (outcome.ok) {
+      log(jobId, "Job completed successfully.");
+      await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, changedFiles }).catch(() => {});
+      removeWorktree(project.localPath, worktreePath);
     } else {
-      log(jobId, `Pushing changes to ${project.defaultBranch}...`);
-      // Serialize per repo: only one job integrates into the default branch at a
-      // time, and it rebases onto the freshly-pushed tip first, so out-of-order
-      // completions can't cause non-fast-forward push rejections.
-      const pushedSha = await withPushLock(project.localPath, async () =>
-        commitAndPushDirect(worktreePath, `feat: ${title}\n\nAutomated by Factory`, project.defaultBranch));
-      await updateStatus(jobId, "completed", { touchedPaths: changedFiles, mergedToMain: true, commitSha: pushedSha });
-      log(jobId, `Merged to ${project.defaultBranch}.`);
+      // Keep the worktree — RETRY PUSH re-runs the pipeline from it.
+      log(jobId, "Job finished, but the push needs your help — see above.");
+      await sendJobNotification({ jobId, title, status: "needs_push_help", projectName: project.name, error: outcome.error }).catch(() => {});
     }
-    log(jobId, "Job completed successfully.");
-    await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, changedFiles }).catch(() => {});
   } catch (err) {
     const msg = String(err);
     log(jobId, `ERROR during commit/push: ${msg}`);
     await updateStatus(jobId, "failed", { error: msg });
     await sendJobNotification({ jobId, title, status: "failed", projectName: project.name, error: msg }).catch(() => {});
-  } finally {
     removeWorktree(project.localPath, worktreePath);
   }
 }

@@ -24,6 +24,7 @@ function optimisticJob(id: string, projectId: string, parentJobId: string, prior
     worktreePath: "", branch: "", prUrl: "", prNumber: 0, error: "", sessionId: "",
     commitSha: "", delegatorPlan: "", needsApproval: false, model: "", effort: "",
     inputTokens: 0, outputTokens: 0, costUsd: 0, mergedToMain: false,
+    pushState: "" as const, pushAttempts: 0, pushError: "", pushedSha: "", pushedTo: "",
     startedAt: 0, completedAt: 0, createdAt: Date.now(),
   };
 }
