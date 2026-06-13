@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Plus, X, Menu } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -57,6 +57,42 @@ const TAB_LABELS: Record<string, string> = {
   terminal: "Terminal",
 };
 
+function ResizeHandle({ onResize, side }: { onResize: (delta: number) => void; side: "left" | "right" }) {
+  const dragging = useRef(false);
+  const lastX = useRef(0);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    lastX.current = e.clientX;
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragging.current) return;
+      const delta = side === "left" ? ev.clientX - lastX.current : lastX.current - ev.clientX;
+      lastX.current = ev.clientX;
+      onResize(delta);
+    };
+    const onMouseUp = () => {
+      dragging.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [onResize, side]);
+
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      className="w-1 cursor-col-resize hover:bg-ink/20 active:bg-ink/30 transition-colors flex-shrink-0 z-10"
+      style={{ touchAction: "none" }}
+    />
+  );
+}
+
 function TokenGate() {
   return (
     <div className="h-screen flex flex-col items-center justify-center gap-6 bg-transparent">
@@ -90,6 +126,15 @@ export function App() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [tab, setTab] = useState("board");
   const [feedOpen, setFeedOpen] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(262);
+  const [rightWidth, setRightWidth] = useState(384);
+
+  const handleLeftResize = useCallback((delta: number) => {
+    setLeftWidth((w) => Math.max(180, Math.min(500, w + delta)));
+  }, []);
+  const handleRightResize = useCallback((delta: number) => {
+    setRightWidth((w) => Math.max(280, Math.min(700, w + delta)));
+  }, []);
 
   if (needToken) return <TokenGate />;
   if (!ready) return <div className="h-screen flex items-center justify-center font-data text-xs uppercase text-muted">Loading…</div>;
@@ -171,10 +216,11 @@ export function App() {
 
       {/* ───────── BODY ───────── */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="hidden lg:flex w-[262px] flex-shrink-0 border-r-4 border-ink flex-col overflow-hidden bg-concrete">
+        <div className="hidden lg:flex flex-shrink-0 border-r-4 border-ink flex-col overflow-hidden bg-concrete" style={{ width: leftWidth }}>
           <div className="flex-1 overflow-hidden"><MasterFeed projectId={projectId} onSelectJob={setSelectedJob} /></div>
           <div className="flex-shrink-0 border-t-4 border-ink p-3"><UsagePanel /></div>
         </div>
+        <ResizeHandle onResize={handleLeftResize} side="left" />
 
         {feedOpen && (
           <div className="lg:hidden fixed inset-0 z-40 flex">
@@ -235,13 +281,16 @@ export function App() {
         </div>
 
         {selectedJob && tab !== "agents" && tab !== "terminal" && (
-          <div className="fixed inset-0 z-30 bg-concrete lg:static lg:inset-auto lg:z-auto lg:w-96 flex-shrink-0 border-l-4 border-ink flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b-4 border-ink bg-ink text-concrete">
-              <span className="font-display text-[13px] tracking-wide uppercase">Job Detail</span>
-              <button onClick={() => setSelectedJob(null)} className="text-concrete hover:opacity-60 text-sm">✕</button>
+          <>
+            <ResizeHandle onResize={handleRightResize} side="right" />
+            <div className="fixed inset-0 z-30 bg-concrete lg:static lg:inset-auto lg:z-auto flex-shrink-0 border-l-4 border-ink flex flex-col overflow-hidden max-lg:!w-auto" style={{ width: rightWidth }}>
+              <div className="flex items-center justify-between px-4 py-3 border-b-4 border-ink bg-ink text-concrete">
+                <span className="font-display text-[13px] tracking-wide uppercase">Job Detail</span>
+                <button onClick={() => setSelectedJob(null)} className="text-concrete hover:opacity-60 text-sm">✕</button>
+              </div>
+              <div className="flex-1 overflow-hidden"><JobDetail jobId={selectedJob} onRedo={(id) => { setSelectedJob(id); setTab("board"); }} /></div>
             </div>
-            <div className="flex-1 overflow-hidden"><JobDetail jobId={selectedJob} onRedo={(id) => { setSelectedJob(id); setTab("board"); }} /></div>
-          </div>
+          </>
         )}
       </div>
 
