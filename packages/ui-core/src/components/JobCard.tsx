@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, X, Play, GitBranch, RotateCcw } from "lucide-react";
+import { PushChip } from "./PushChip";
+import { ExternalLink, X, Play, GitBranch, RotateCcw, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import type { Job } from "@/lib/types";
-import { queueJob, cancelJob, cancelEpic, createJob } from "@/lib/mutations";
+import { queueJob, cancelJob, cancelEpic, createJob, retryPush } from "@/lib/mutations";
 
 export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?: (id: string) => void; childProgress?: { done: number; total: number } }) {
   const [showRedoDialog, setShowRedoDialog] = useState(false);
@@ -20,6 +21,11 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
   async function handleCancel() {
     if (job.kind === "epic") { await cancelEpic(job.id); toast.info("Epic cancelled"); }
     else { await cancelJob(job.id); toast.info("Job cancelled"); }
+  }
+
+  async function handleRetryPush() {
+    await retryPush(job.id);
+    toast.info("Retrying push — watch the push chip");
   }
 
   async function handleRedo() {
@@ -51,12 +57,7 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
               </span>
             )}
             <StatusBadge status={job.status} />
-            {job.mergedToMain && (
-              <span className="w-2.5 h-2.5 rounded-full bg-[#1f7a3d] flex-shrink-0" title="Merged to main" />
-            )}
-            {!job.mergedToMain && job.prUrl && (
-              <span className="w-2.5 h-2.5 rounded-full bg-[#e0a32e] flex-shrink-0" title="Pushed to PR" />
-            )}
+            <PushChip job={job} />
           </div>
         </div>
 
@@ -98,6 +99,15 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
                 onClick={(e) => { e.stopPropagation(); handleRun(); }}
               >
                 <Play className="w-2.5 h-2.5" /> Run
+              </button>
+            )}
+            {job.pushState === "needs_help" && (
+              <button
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md font-data text-[10px] uppercase bg-[#f4604f] text-surface-deep border border-[#f4604f] hover:bg-[#f4604f]/80 transition-colors"
+                title={job.pushError || "Push failed — retry it"}
+                onClick={(e) => { e.stopPropagation(); handleRetryPush(); }}
+              >
+                <UploadCloud className="w-2.5 h-2.5" /> Retry Push
               </button>
             )}
             {(job.status === "cancelled" || job.status === "failed") && (

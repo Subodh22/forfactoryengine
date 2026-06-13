@@ -54,6 +54,10 @@ export type JobEffort = "low" | "medium" | "high" | "max" | "";
 // hand and tick it off. Only meaningful for tasks inside a manual plan.
 export type JobAssignee = "" | "agent" | "human";
 
+// Push lifecycle, tracked separately from job status: the agent's work can
+// succeed while the push to GitHub still fails. "" = nothing to push (yet).
+export type PushState = "" | "pushing" | "pushed" | "needs_help";
+
 export interface Job {
   id: string;
   projectId: string;
@@ -72,6 +76,11 @@ export interface Job {
   prUrl: string;
   prNumber: number;
   error: string;
+  pushState: PushState;
+  pushAttempts: number;
+  pushError: string;
+  pushedSha: string;
+  pushedTo: string;
   sessionId: string;
   /** The commit recorded when the job's work landed — lets the diff endpoint
    *  show "what this job changed" long after its worktree/branch is gone. */
@@ -124,6 +133,11 @@ export async function initSchema(): Promise<void> {
       pr_url         TEXT NOT NULL DEFAULT '',
       pr_number      INTEGER NOT NULL DEFAULT 0,
       error          TEXT NOT NULL DEFAULT '',
+      push_state     TEXT NOT NULL DEFAULT '',
+      push_attempts  INTEGER NOT NULL DEFAULT 0,
+      push_error     TEXT NOT NULL DEFAULT '',
+      pushed_sha     TEXT NOT NULL DEFAULT '',
+      pushed_to      TEXT NOT NULL DEFAULT '',
       session_id     TEXT NOT NULL DEFAULT '',
       commit_sha     TEXT NOT NULL DEFAULT '',
       delegator_plan TEXT NOT NULL DEFAULT '',
@@ -159,6 +173,11 @@ export async function initSchema(): Promise<void> {
     ["worktree_path", "TEXT NOT NULL DEFAULT ''"],
     ["pr_url", "TEXT NOT NULL DEFAULT ''"],
     ["pr_number", "INTEGER NOT NULL DEFAULT 0"],
+    ["push_state", "TEXT NOT NULL DEFAULT ''"],
+    ["push_attempts", "INTEGER NOT NULL DEFAULT 0"],
+    ["push_error", "TEXT NOT NULL DEFAULT ''"],
+    ["pushed_sha", "TEXT NOT NULL DEFAULT ''"],
+    ["pushed_to", "TEXT NOT NULL DEFAULT ''"],
     ["session_id", "TEXT NOT NULL DEFAULT ''"],
     ["delegator_plan", "TEXT NOT NULL DEFAULT ''"],
     ["needs_approval", "INTEGER NOT NULL DEFAULT 0"],
@@ -358,6 +377,11 @@ function rowToJob(r: Row): Job {
     prUrl: String(r.pr_url ?? ""),
     prNumber: Number(r.pr_number ?? 0),
     error: String(r.error ?? ""),
+    pushState: String(r.push_state ?? "") as PushState,
+    pushAttempts: Number(r.push_attempts ?? 0),
+    pushError: String(r.push_error ?? ""),
+    pushedSha: String(r.pushed_sha ?? ""),
+    pushedTo: String(r.pushed_to ?? ""),
     sessionId: String(r.session_id ?? ""),
     commitSha: String(r.commit_sha ?? ""),
     delegatorPlan: String(r.delegator_plan ?? ""),
@@ -422,6 +446,11 @@ export async function createJob(input: {
     prUrl: "",
     prNumber: 0,
     error: "",
+    pushState: "",
+    pushAttempts: 0,
+    pushError: "",
+    pushedSha: "",
+    pushedTo: "",
     sessionId: "",
     commitSha: "",
     delegatorPlan: input.delegatorPlan ?? "",
@@ -452,6 +481,8 @@ export async function createJob(input: {
 const JOB_COLUMNS: Record<string, string> = {
   title: "title", prompt: "prompt", status: "status", branch: "branch", prUrl: "pr_url",
   prNumber: "pr_number", error: "error", worktreePath: "worktree_path", sessionId: "session_id", commitSha: "commit_sha",
+  pushState: "push_state", pushAttempts: "push_attempts", pushError: "push_error",
+  pushedSha: "pushed_sha", pushedTo: "pushed_to",
   delegatorPlan: "delegator_plan", priority: "priority", parentJobId: "parent_job_id",
   startedAt: "started_at", completedAt: "completed_at", inputTokens: "input_tokens",
   outputTokens: "output_tokens", costUsd: "cost_usd", assignee: "assignee",
@@ -573,6 +604,7 @@ export async function appendPrompt(id: string, text: string, images?: string[]):
 export async function requeueJob(id: string): Promise<void> {
   await patchJob(id, {
     status: "queued", error: "", prUrl: "", prNumber: 0, mergedToMain: false, startedAt: 0, completedAt: 0,
+    pushState: "", pushAttempts: 0, pushError: "", pushedSha: "", pushedTo: "",
   });
 }
 

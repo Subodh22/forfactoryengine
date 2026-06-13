@@ -3,9 +3,32 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 
-function git(args: string[], cwd: string): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync("git", args, { cwd, stdio: "pipe", encoding: "utf8" });
+function git(args: string[], cwd: string, env?: NodeJS.ProcessEnv): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync("git", args, { cwd, stdio: "pipe", encoding: "utf8", ...(env ? { env: { ...process.env, ...env } } : {}) });
   return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+// ── Push error classification ───────────────────────────────────────────────
+// "transient" → worth retrying (network blips, another job pushed first).
+// "auth"      → retrying is pointless, the user must fix credentials.
+// "conflict"  → deterministic; needs conflict resolution, not a retry.
+export type PushErrorKind = "transient" | "auth" | "conflict";
+
+export class PushError extends Error {
+  kind: PushErrorKind;
+  conflictFiles: string[];
+  constructor(kind: PushErrorKind, message: string, conflictFiles: string[] = []) {
+    super(message);
+    this.kind = kind;
+    this.conflictFiles = conflictFiles;
+  }
+}
+
+function classifyGitFailure(output: string): PushErrorKind {
+  if (/authentication failed|permission denied|could not read username|invalid credentials|HTTP 40[13]|status 40[13]/i.test(output)) {
+    return "auth";
+  }
+  return "transient";
 }
 
 function resolveRepo(repoPath: string): string {
@@ -241,32 +264,68 @@ export function readFileIn(rootPath: string, relPath: string): { content: string
 }
 
 /**
- * Commit all changes on the current worktree branch, then push them directly
- * to the repo's default branch — no PR needed.
- * Fetches latest remote first so the push fast-forwards cleanly.
- * Returns the pushed commit sha (post-rebase).
+ * Fetch the target branch and rebase the worktree onto it. On a merge conflict
+ * the rebase is left PAUSED — conflict markers in place — so a conflict
+ * resolver (the agent) can edit the files before `continueRebase`; callers that
+ * can't resolve must call `abortRebase`. Throws PushError("conflict") with the
+ * conflicted file list.
  */
-export function commitAndPushDirect(worktreePath: string, message: string, defaultBranch: string): string {
-  git(["add", "-A"], worktreePath);
-  const commit = git(["commit", "-m", message], worktreePath);
-  if (commit.status !== 0 && !commit.stdout.includes("nothing to commit")) {
-    throw new Error(`git commit failed: ${commit.stderr}`);
+export function fetchAndRebase(worktreePath: string, targetBranch: string): void {
+  const fetch = git(["fetch", "origin", targetBranch], worktreePath);
+  if (fetch.status !== 0) {
+    throw new PushError(classifyGitFailure(fetch.stderr), `git fetch failed: ${fetch.stderr || fetch.stdout}`);
   }
-
-  // Bring in any new commits on the default branch before pushing
-  git(["fetch", "origin", defaultBranch], worktreePath);
-  const rebase = git(["rebase", `origin/${defaultBranch}`], worktreePath);
+  const rebase = git(["rebase", `origin/${targetBranch}`], worktreePath);
   if (rebase.status !== 0) {
-    // Abort the rebase so the worktree stays clean
+    const files = git(["diff", "--name-only", "--diff-filter=U"], worktreePath)
+      .stdout.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (files.length) {
+      throw new PushError("conflict", `rebase onto ${targetBranch} hit conflicts in: ${files.join(", ")}`, files);
+    }
     git(["rebase", "--abort"], worktreePath);
-    throw new Error(`rebase onto ${defaultBranch} failed (merge conflict): ${rebase.stderr}`);
+    throw new PushError("transient", `rebase onto ${targetBranch} failed: ${rebase.stderr || rebase.stdout}`);
   }
+}
 
-  const push = git(["push", "origin", `HEAD:${defaultBranch}`], worktreePath);
-  if (push.status !== 0) {
-    throw new Error(`push to ${defaultBranch} failed: ${push.stderr}`);
+export function abortRebase(worktreePath: string): void {
+  git(["rebase", "--abort"], worktreePath);
+}
+
+/** Stage everything and continue a paused rebase. GIT_EDITOR=true keeps git
+ *  from opening an editor for the continued commit's message. */
+export function continueRebase(worktreePath: string): void {
+  git(["add", "-A"], worktreePath);
+  const r = git(["rebase", "--continue"], worktreePath, { GIT_EDITOR: "true" });
+  if (r.status !== 0) {
+    throw new PushError("conflict", `rebase --continue failed: ${r.stderr || r.stdout}`);
   }
-  return headSha(worktreePath);
+}
+
+/** True if any of the files still contains an unresolved conflict marker —
+ *  the guard that keeps a half-resolved rebase from being committed. Only the
+ *  labeled <<<<<<< / >>>>>>> lines count: a bare ======= is a legitimate
+ *  markdown heading underline. */
+export function hasConflictMarkers(worktreePath: string, files: string[]): boolean {
+  for (const f of files) {
+    try {
+      const text = fs.readFileSync(path.join(worktreePath, f), "utf8");
+      if (/^<{7} /m.test(text) || /^>{7} /m.test(text)) return true;
+    } catch { /* deleted-file conflicts can't be marker-checked */ }
+  }
+  return false;
+}
+
+/** Push the worktree's HEAD onto a remote branch, with the failure classified
+ *  so the push pipeline knows whether retrying makes sense. */
+export function pushHeadTo(worktreePath: string, targetBranch: string): void {
+  const r = git(["push", "origin", `HEAD:${targetBranch}`], worktreePath);
+  if (r.status !== 0) {
+    const out = r.stderr || r.stdout;
+    if (/non-fast-forward|fetch first|cannot lock ref|stale info/i.test(out)) {
+      throw new PushError("transient", `push to ${targetBranch} rejected (remote moved): ${out}`);
+    }
+    throw new PushError(classifyGitFailure(out), `push to ${targetBranch} failed: ${out}`);
+  }
 }
 
 // ── Delegator: epic integration branch ─────────────────────────────────────
@@ -348,16 +407,8 @@ export function mergeIntoBranch(epicWorktreePath: string, childBranch: string, m
 export function pushBranch(worktreePath: string, branch: string) {
   const r = git(["push", "origin", `${branch}:${branch}`], worktreePath);
   if (r.status !== 0) {
-    throw new Error(`push of ${branch} failed: ${r.stderr || r.stdout}`);
-  }
-}
-
-/** Push the epic branch's contents directly onto the default branch — the
- *  tokenless fallback when no PR can be opened. */
-export function pushBranchToDefault(epicWorktreePath: string, defaultBranch: string) {
-  const r = git(["push", "origin", `HEAD:${defaultBranch}`], epicWorktreePath);
-  if (r.status !== 0) {
-    throw new Error(`push to ${defaultBranch} failed: ${r.stderr || r.stdout}`);
+    const out = r.stderr || r.stdout;
+    throw new PushError(classifyGitFailure(out), `push of ${branch} failed: ${out}`);
   }
 }
 

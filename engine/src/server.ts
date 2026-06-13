@@ -22,6 +22,7 @@ import {
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
+import { retryPush } from "./push";
 import { readOutput, clearOutput } from "./output-log";
 import { readChat, appendChat, clearChat } from "./chat-log";
 import { scheduleDelegationCheck, finalizeEpic } from "./delegator-scheduler";
@@ -533,6 +534,12 @@ export function startServer(port: number): http.Server {
           const updated = await getJob(id);
           if (updated) broadcast({ type: "job.updated", job: updated });
           return sendJson(res, 200, updated);
+        }
+        if (method === "POST" && action === "retry-push") {
+          // Fire-and-return: the retry can take minutes (agent conflict pass).
+          // Progress streams back over the WebSocket as pushState changes.
+          void retryPush(id).catch((err) => console.error(`[retry-push] ${id}: ${err}`));
+          return sendJson(res, 202, { ok: true });
         }
         if (method === "POST" && action === "requeue") {
           await requeueJob(id);

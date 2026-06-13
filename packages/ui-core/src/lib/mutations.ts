@@ -88,6 +88,10 @@ export const setJobStatus = (id: string, status: JobStatus, extra: Partial<Job> 
 export const queueJob = (id: string) => api<Job>(`/api/jobs/${id}/queue`, { method: "POST" });
 export const requeueJob = (id: string) => api<Job>(`/api/jobs/${id}/requeue`, { method: "POST" });
 
+// Re-run just the push pipeline from the kept worktree (no agent re-run).
+// Returns 202 immediately; progress arrives over the WebSocket via pushState.
+export const retryPush = (id: string) => api(`/api/jobs/${id}/retry-push`, { method: "POST" });
+
 export const redoJob = (id: string, extraPrompt?: string, extraImages?: string[]) =>
   api<Job>(`/api/jobs/${id}/redo`, { method: "POST", body: JSON.stringify({ extraPrompt, extraImages }) });
 
