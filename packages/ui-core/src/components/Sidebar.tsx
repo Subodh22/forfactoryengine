@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
-import { LayoutGrid, Clock, Plus, ChevronRight, GitBranch, Folder, Settings } from "lucide-react";
+import { LayoutGrid, Clock, Plus, ChevronRight, GitBranch, Folder, Settings, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { removeJob, removeJobCascade } from "@/lib/mutations";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { UsagePanel } from "@/components/UsagePanel";
 import { useJobs, useProjects } from "@/lib/data";
@@ -119,21 +121,41 @@ function ProjectTree({
           {workspaces.map((ws) => {
             const isSel = ws.id === selectedJob;
             return (
-              <button
+              <div
                 key={ws.id}
-                onClick={() => onSelectJob(ws.id)}
-                title={ws.title}
-                className={`flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-md text-left transition-colors ${
+                className={`group/ws flex items-center rounded-md transition-colors ${
                   isSel ? "bg-concrete-2 text-ink" : "text-muted hover:bg-concrete-2/50 hover:text-ink"
                 }`}
               >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotPulse(ws.status) ? "animate-pulse" : ""}`}
-                  style={{ backgroundColor: STATUS_DOT[ws.status] }}
-                />
-                <GitBranch className="w-3 h-3 flex-shrink-0 opacity-50" />
-                <span className="text-[12.5px] truncate">{ws.title || "Untitled"}</span>
-              </button>
+                <button
+                  onClick={() => onSelectJob(ws.id)}
+                  title={ws.title}
+                  className="flex items-center gap-2 pl-2 pr-1.5 py-1 text-left min-w-0 flex-1 overflow-hidden"
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotPulse(ws.status) ? "animate-pulse" : ""}`}
+                    style={{ backgroundColor: STATUS_DOT[ws.status] }}
+                  />
+                  <GitBranch className="w-3 h-3 flex-shrink-0 opacity-50" />
+                  <span className="text-[12.5px] truncate">{ws.title || "Untitled"}</span>
+                </button>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!window.confirm(`Delete "${ws.title || "Untitled"}"? This cannot be undone.`)) return;
+                    try {
+                      await removeJobCascade(ws.id);
+                      toast.success("Workspace deleted");
+                    } catch {
+                      toast.error("Failed to delete workspace");
+                    }
+                  }}
+                  title="Delete workspace"
+                  className="opacity-0 group-hover/ws:opacity-100 text-muted hover:text-[#f4604f] transition-opacity flex-shrink-0 p-1 mr-0.5"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             );
           })}
           <button
