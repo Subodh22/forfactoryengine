@@ -108,7 +108,7 @@ function ProjectTree({
         <button
           onClick={() => onNewWorkspace(project.id)}
           title="New workspace"
-          className="opacity-0 group-hover:opacity-100 text-muted hover:text-ink transition-opacity flex-shrink-0 p-0.5"
+          className="text-muted hover:text-ink transition-opacity flex-shrink-0 p-0.5"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
