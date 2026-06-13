@@ -167,26 +167,35 @@ export function getChangedFiles(worktreePath: string): string[] {
  * Commit all changes on the current worktree branch, then push them directly
  * to the repo's default branch — no PR needed.
  * Fetches latest remote first so the push fast-forwards cleanly.
+ * Automatically retries on push failure (fetch + rebase + push) up to
+ * `maxRetries` times before giving up.
  */
-export function commitAndPushDirect(worktreePath: string, message: string, defaultBranch: string) {
+export function commitAndPushDirect(worktreePath: string, message: string, defaultBranch: string, maxRetries = 3) {
   git(["add", "-A"], worktreePath);
   const commit = git(["commit", "-m", message], worktreePath);
   if (commit.status !== 0 && !commit.stdout.includes("nothing to commit")) {
     throw new Error(`git commit failed: ${commit.stderr}`);
   }
 
-  // Bring in any new commits on the default branch before pushing
-  git(["fetch", "origin", defaultBranch], worktreePath);
-  const rebase = git(["rebase", `origin/${defaultBranch}`], worktreePath);
-  if (rebase.status !== 0) {
-    // Abort the rebase so the worktree stays clean
-    git(["rebase", "--abort"], worktreePath);
-    throw new Error(`rebase onto ${defaultBranch} failed (merge conflict): ${rebase.stderr}`);
-  }
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // Bring in any new commits on the default branch before pushing
+    git(["fetch", "origin", defaultBranch], worktreePath);
+    const rebase = git(["rebase", `origin/${defaultBranch}`], worktreePath);
+    if (rebase.status !== 0) {
+      git(["rebase", "--abort"], worktreePath);
+      throw new Error(`rebase onto ${defaultBranch} failed (merge conflict): ${rebase.stderr}`);
+    }
 
-  const push = git(["push", "origin", `HEAD:${defaultBranch}`], worktreePath);
-  if (push.status !== 0) {
-    throw new Error(`push to ${defaultBranch} failed: ${push.stderr}`);
+    const push = git(["push", "origin", `HEAD:${defaultBranch}`], worktreePath);
+    if (push.status === 0) return;
+
+    const errMsg = push.stderr || push.stdout;
+    if (attempt < maxRetries) {
+      console.error(`[push] attempt ${attempt}/${maxRetries} failed: ${errMsg} — retrying…`);
+      sleepSync(1000 * attempt);
+    } else {
+      throw new Error(`push to ${defaultBranch} failed after ${maxRetries} attempts: ${errMsg}`);
+    }
   }
 }
 
@@ -258,20 +267,38 @@ export function mergeIntoBranch(epicWorktreePath: string, childBranch: string, m
   }
 }
 
-/** Push a local branch to origin under the same name. */
-export function pushBranch(worktreePath: string, branch: string) {
-  const r = git(["push", "origin", `${branch}:${branch}`], worktreePath);
-  if (r.status !== 0) {
-    throw new Error(`push of ${branch} failed: ${r.stderr || r.stdout}`);
+/** Push a local branch to origin under the same name. Retries automatically on
+ *  transient failures up to `maxRetries` times. */
+export function pushBranch(worktreePath: string, branch: string, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const r = git(["push", "origin", `${branch}:${branch}`], worktreePath);
+    if (r.status === 0) return;
+
+    const errMsg = r.stderr || r.stdout;
+    if (attempt < maxRetries) {
+      console.error(`[push] attempt ${attempt}/${maxRetries} for ${branch} failed: ${errMsg} — retrying…`);
+      sleepSync(1000 * attempt);
+    } else {
+      throw new Error(`push of ${branch} failed after ${maxRetries} attempts: ${errMsg}`);
+    }
   }
 }
 
 /** Push the epic branch's contents directly onto the default branch — the
- *  tokenless fallback when no PR can be opened. */
-export function pushBranchToDefault(epicWorktreePath: string, defaultBranch: string) {
-  const r = git(["push", "origin", `HEAD:${defaultBranch}`], epicWorktreePath);
-  if (r.status !== 0) {
-    throw new Error(`push to ${defaultBranch} failed: ${r.stderr || r.stdout}`);
+ *  tokenless fallback when no PR can be opened. Retries automatically on
+ *  transient failures. */
+export function pushBranchToDefault(epicWorktreePath: string, defaultBranch: string, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const r = git(["push", "origin", `HEAD:${defaultBranch}`], epicWorktreePath);
+    if (r.status === 0) return;
+
+    const errMsg = r.stderr || r.stdout;
+    if (attempt < maxRetries) {
+      console.error(`[push] attempt ${attempt}/${maxRetries} to ${defaultBranch} failed: ${errMsg} — retrying…`);
+      sleepSync(1000 * attempt);
+    } else {
+      throw new Error(`push to ${defaultBranch} failed after ${maxRetries} attempts: ${errMsg}`);
+    }
   }
 }
 
