@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { X } from "lucide-react";
 import { ProjectBoard } from "@/components/ProjectBoard";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -50,6 +50,42 @@ function UsagePill({ inputTokens, outputTokens, jobCount }: { inputTokens: numbe
         </>
       )}
     </div>
+  );
+}
+
+function ResizeHandle({ onResize, side }: { onResize: (delta: number) => void; side: "left" | "right" }) {
+  const dragging = useRef(false);
+  const lastX = useRef(0);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    lastX.current = e.clientX;
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragging.current) return;
+      const delta = side === "left" ? ev.clientX - lastX.current : lastX.current - ev.clientX;
+      lastX.current = ev.clientX;
+      onResize(delta);
+    };
+    const onMouseUp = () => {
+      dragging.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [onResize, side]);
+
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      className="hidden lg:block w-1 cursor-col-resize hover:bg-[#b08a3e]/30 active:bg-[#b08a3e]/50 transition-colors flex-shrink-0 z-10"
+      style={{ touchAction: "none" }}
+    />
   );
 }
 
@@ -105,6 +141,18 @@ export function App() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [view, setView] = useState<ShellView>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(248);
+  const [dockWidth, setDockWidth] = useState(0); // 0 = use default percentage
+
+  const handleSidebarResize = useCallback((delta: number) => {
+    setSidebarWidth((w) => Math.max(180, Math.min(400, w + delta)));
+  }, []);
+  const handleDockResize = useCallback((delta: number) => {
+    setDockWidth((w) => {
+      const current = w || 600;
+      return Math.max(380, Math.min(900, current + delta));
+    });
+  }, []);
 
   if (needToken) return <TokenGate />;
   if (!ready) return <div className="h-screen flex items-center justify-center font-data text-xs uppercase text-muted bg-concrete">Loading…</div>;
@@ -200,7 +248,9 @@ export function App() {
           onNewWorkspace={newWorkspace}
           onAddProject={() => setShowAddProject(true)}
           onProjectSettings={(pid) => { setActiveProject(pid); goView("settings"); }}
+          width={sidebarWidth}
         />
+        <ResizeHandle onResize={handleSidebarResize} side="left" />
 
         {/* Mobile sidebar drawer */}
         {drawerOpen && (
@@ -231,7 +281,10 @@ export function App() {
 
         {/* Right dock — only for a selected workspace */}
         {selectedJob && breadcrumbProject && (
-          <RightDock jobId={selectedJob} project={{ name: breadcrumbProject.name, localPath: breadcrumbProject.localPath, setupScript: breadcrumbProject.setupScript, runScript: breadcrumbProject.runScript }} />
+          <>
+            <ResizeHandle onResize={handleDockResize} side="right" />
+            <RightDock jobId={selectedJob} project={{ name: breadcrumbProject.name, localPath: breadcrumbProject.localPath, setupScript: breadcrumbProject.setupScript, runScript: breadcrumbProject.runScript }} width={dockWidth || undefined} />
+          </>
         )}
       </div>
 

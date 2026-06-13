@@ -33,6 +33,8 @@ interface Props {
   onProjectSettings: (projectId: string) => void;
   /** Render as an always-visible mobile drawer instead of the desktop rail. */
   drawer?: boolean;
+  /** Override sidebar width in pixels (desktop only). */
+  width?: number;
 }
 
 const STATUS_DOT: Record<JobStatus, string> = {
@@ -159,6 +161,7 @@ export function Sidebar({
   onAddProject,
   onProjectSettings,
   drawer,
+  width,
 }: Props) {
   const projects = useProjects();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(activeProject ? [activeProject] : []));
@@ -174,7 +177,7 @@ export function Sidebar({
   };
 
   return (
-    <div className={`${drawer ? "flex" : "hidden lg:flex"} w-[248px] h-full flex-shrink-0 border-r border-[#332f28] flex-col overflow-hidden bg-concrete`}>
+    <div className={`${drawer ? "flex" : "hidden lg:flex"} h-full flex-shrink-0 border-r border-[#332f28] flex-col overflow-hidden bg-concrete`} style={{ width: width ?? 248 }}>
       {/* Brand */}
       <div className="flex items-center gap-2 px-3.5 h-[46px] flex-shrink-0">
         <span className="w-[14px] h-[14px] rounded-[4px] bg-[#b08a3e] inline-block" />

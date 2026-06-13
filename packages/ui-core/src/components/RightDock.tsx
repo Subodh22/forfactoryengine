@@ -17,6 +17,8 @@ type DockTab = "files" | "changes" | "checks" | "terminal";
 interface Props {
   jobId: string;
   project: { name: string; localPath: string; setupScript?: string; runScript?: string };
+  /** Override dock width in pixels (desktop only). */
+  width?: number;
 }
 
 const TABS: { key: DockTab; label: string; icon: React.ReactNode }[] = [
@@ -26,7 +28,7 @@ const TABS: { key: DockTab; label: string; icon: React.ReactNode }[] = [
   { key: "terminal", label: "Terminal", icon: <TerminalSquare className="w-3.5 h-3.5" /> },
 ];
 
-export function RightDock({ jobId, project }: Props) {
+export function RightDock({ jobId, project, width }: Props) {
   const job = useJob(jobId);
   const [tab, setTab] = useState<DockTab>("changes");
   // Latch the terminal mounted after first visit so its shell sessions persist.
@@ -34,7 +36,7 @@ export function RightDock({ jobId, project }: Props) {
   if (tab === "terminal") openedTerminal.current = true;
 
   return (
-    <div className="hidden lg:flex w-[42%] min-w-[380px] max-w-[760px] flex-shrink-0 border-l border-[#332f28] flex-col overflow-hidden bg-concrete">
+    <div className={`hidden lg:flex flex-shrink-0 border-l border-[#332f28] flex-col overflow-hidden bg-concrete ${width ? "" : "w-[42%] min-w-[380px] max-w-[760px]"}`} style={width ? { width } : undefined}>
       {/* Tab strip */}
       <div className="flex items-center gap-0.5 px-2 h-[42px] border-b border-[#332f28] flex-shrink-0 bg-concrete">
         {TABS.map((t) => (
