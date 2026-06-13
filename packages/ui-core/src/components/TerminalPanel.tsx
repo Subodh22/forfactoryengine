@@ -12,11 +12,12 @@ import { termUrl } from "@/lib/api";
  * mounted. `active` tells it when it's the visible tab so it can refit/refocus
  * (xterm can't measure a hidden element). Chrome (tabs) lives in TerminalTabs.
  */
-export function TerminalPanel({ cwd, active }: { cwd: string; active: boolean }) {
+export function TerminalPanel({ cwd, active, bootCommand }: { cwd: string; active: boolean; bootCommand?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const bootedRef = useRef(false);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
@@ -38,7 +39,16 @@ export function TerminalPanel({ cwd, active }: { cwd: string; active: boolean })
 
     const ws = new WebSocket(termUrl(cwd, term.cols, term.rows));
     wsRef.current = ws;
-    ws.onopen = () => { setConnected(true); ws.send(JSON.stringify({ r: [term.cols, term.rows] })); term.focus(); };
+    ws.onopen = () => {
+      setConnected(true);
+      ws.send(JSON.stringify({ r: [term.cols, term.rows] }));
+      term.focus();
+      // Auto-run a boot command once (e.g. the project's setup / run script).
+      if (bootCommand && bootCommand.trim() && !bootedRef.current) {
+        bootedRef.current = true;
+        setTimeout(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ i: `${bootCommand}\n` })); }, 300);
+      }
+    };
     ws.onclose = () => setConnected(false);
     ws.onmessage = (e) => {
       if (typeof e.data === "string") term.write(e.data);
@@ -79,7 +89,7 @@ export function TerminalPanel({ cwd, active }: { cwd: string; active: boolean })
   return (
     <div className="flex flex-col h-full w-full">
       <div ref={containerRef} className="flex-1 overflow-hidden p-2" style={{ backgroundColor: "#1a1714" }} />
-      <div className="flex items-center gap-2 px-3 h-7 border-t border-[#2a2722] flex-shrink-0 bg-ink">
+      <div className="flex items-center gap-2 px-3 h-7 border-t border-[#2a2722] flex-shrink-0 bg-concrete">
         <span className={`flex items-center gap-1 font-mono text-[10px] ${connected ? "text-[#3bd16f]" : "text-[#6b8a6b]"}`}>
           <span className={`w-1.5 h-1.5 ${connected ? "bg-[#3bd16f]" : "bg-[#6b8a6b]"}`} />{connected ? "connected" : "offline"}
         </span>

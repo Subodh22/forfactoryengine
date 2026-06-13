@@ -45,6 +45,49 @@ export async function createPR(
   return { url: data.html_url, number: data.number };
 }
 
+export interface CheckRun {
+  name: string;
+  status: string;            // queued | in_progress | completed
+  conclusion: string | null; // success | failure | neutral | cancelled | timed_out | action_required | null
+  url: string | null;
+}
+
+/** Combined CI status for a PR: GitHub Actions check-runs plus legacy commit
+ *  statuses (Vercel, etc.), deduped by name. */
+export async function getPrChecks(
+  token: string, owner: string, repo: string, prNumber: number,
+): Promise<{ checks: CheckRun[]; sha: string }> {
+  const client = octo(token);
+  const { data: pr } = await client.pulls.get({ owner, repo, pull_number: prNumber });
+  const sha = pr.head.sha;
+
+  const checks: CheckRun[] = [];
+  const seen = new Set<string>();
+
+  const { data: runs } = await client.checks.listForRef({ owner, repo, ref: sha, per_page: 100 });
+  for (const c of runs.check_runs) {
+    seen.add(c.name);
+    checks.push({ name: c.name, status: c.status, conclusion: c.conclusion ?? null, url: c.html_url ?? null });
+  }
+
+  // Legacy commit statuses (e.g. Vercel deployments) — only those not already a check-run.
+  try {
+    const { data: statuses } = await client.repos.listCommitStatusesForRef({ owner, repo, ref: sha, per_page: 100 });
+    for (const s of statuses) {
+      if (seen.has(s.context)) continue;
+      seen.add(s.context);
+      checks.push({
+        name: s.context,
+        status: s.state === "pending" ? "in_progress" : "completed",
+        conclusion: s.state === "success" ? "success" : s.state === "failure" || s.state === "error" ? "failure" : null,
+        url: s.target_url ?? null,
+      });
+    }
+  } catch { /* statuses are best-effort */ }
+
+  return { checks, sha };
+}
+
 export interface CreatedRepo { fullName: string; defaultBranch: string; htmlUrl: string }
 
 /** Create a brand-new repo on the authenticated user's account, seeded with an

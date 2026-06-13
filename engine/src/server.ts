@@ -8,7 +8,7 @@ import {
   listJobs, getJob, createJob, patchJob, childrenOf, descendantsOf, createSubtree, MANUAL_PLAN_MARKER, isManualEpic,
   listProjects, getProject, createProject,
   updateProject, removeProject, removeJob, redoJob, appendPrompt, requeueJob, cancelEpic,
-  getTodayStats, getSetting, setSetting, approveDelegationPlan,
+  getTodayStats, getSetting, setSetting, approveDelegationPlan, listCheckpoints,
   type Job,
 } from "./db";
 import type { z } from "zod";
@@ -17,17 +17,18 @@ import {
   AppendBodySchema, ClaudeMdBodySchema, CloneBodySchema, CreateChildrenBodySchema,
   CreateJobBodySchema, CreateProjectBodySchema, CreateRepoBodySchema, EnvWriteBodySchema,
   GithubConnectBodySchema, PatchJobBodySchema, RedoBodySchema, ReplyBodySchema,
-  SetStatusBodySchema, UpdateProjectBodySchema,
+  SetStatusBodySchema, UpdateProjectBodySchema, RollbackBodySchema,
 } from "./api-schemas";
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
 import { readOutput, clearOutput } from "./output-log";
+import { readChat, appendChat, clearChat } from "./chat-log";
 import { scheduleDelegationCheck, finalizeEpic } from "./delegator-scheduler";
 import { getClaudeUsage } from "./usage";
 import { checkAuth, authEnabled } from "./auth";
-import { getUser, fetchUserRepos, createRepo } from "./agent/github";
-import { getJobDiff } from "./agent/worktree";
+import { getUser, fetchUserRepos, createRepo, getPrChecks } from "./agent/github";
+import { getJobDiff, listFilesIn, readFileIn, restoreCheckpoint } from "./agent/worktree";
 import { oauthConfigured, OAUTH_CALLBACK, APP_URL } from "./config";
 import { newState, consumeState, authorizeUrl, exchangeCode } from "./oauth";
 
@@ -375,6 +376,10 @@ export function startServer(port: number): http.Server {
           // show full history; the live tail continues over the WebSocket.
           return sendJson(res, 200, { output: readOutput(id) });
         }
+        if (method === "GET" && action === "chat") {
+          // Persisted chat turns — replayed when a job is reopened.
+          return sendJson(res, 200, { messages: readChat(id) });
+        }
         if (method === "GET" && action === "diff") {
           // What this job changed: live worktree diff while running, the
           // recorded commit (or surviving branch) after completion.
@@ -383,6 +388,61 @@ export function startServer(port: number): http.Server {
           const project = await getProject(job.projectId);
           if (!project?.localPath) return sendJson(res, 200, { source: "none", stat: "", patch: "", truncated: false });
           return sendJson(res, 200, getJobDiff(project.localPath, job, project.defaultBranch));
+        }
+        if (method === "GET" && action === "files") {
+          // The workspace's file tree: the job's worktree while it exists, else
+          // the project's repo on disk.
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "not found" });
+          const project = await getProject(job.projectId);
+          const root = job.worktreePath && fs.existsSync(job.worktreePath) ? job.worktreePath : project?.localPath;
+          if (!root || !fs.existsSync(root)) return sendJson(res, 200, { files: [], truncated: false, root: "" });
+          return sendJson(res, 200, { ...listFilesIn(root), root });
+        }
+        if (method === "GET" && action === "file") {
+          const rel = url.searchParams.get("path") ?? "";
+          if (!rel) return sendJson(res, 400, { error: "path query param required" });
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "not found" });
+          const project = await getProject(job.projectId);
+          const root = job.worktreePath && fs.existsSync(job.worktreePath) ? job.worktreePath : project?.localPath;
+          if (!root) return sendJson(res, 404, { error: "no files for this job" });
+          const result = readFileIn(root, rel);
+          if (!result) return sendJson(res, 404, { error: "file not found" });
+          return sendJson(res, 200, result);
+        }
+        if (method === "GET" && action === "checks") {
+          // CI status for the job's PR (GitHub Actions + Vercel/commit statuses).
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "not found" });
+          if (!job.prNumber) return sendJson(res, 200, { checks: [], state: "no-pr" });
+          const project = await getProject(job.projectId);
+          const token = project?.githubToken || process.env.GH_TOKEN || "";
+          if (!project?.repo || !token) return sendJson(res, 200, { checks: [], state: "no-token" });
+          const [owner, repo] = project.repo.split("/");
+          try {
+            const { checks } = await getPrChecks(token, owner, repo, job.prNumber);
+            return sendJson(res, 200, { checks, state: "ok" });
+          } catch (err) {
+            return sendJson(res, 200, { checks: [], state: "error", error: String(err instanceof Error ? err.message : err) });
+          }
+        }
+        if (method === "GET" && action === "checkpoints") {
+          return sendJson(res, 200, { checkpoints: await listCheckpoints(id) });
+        }
+        if (method === "POST" && action === "rollback") {
+          const b = await parseBody(req, res, RollbackBodySchema);
+          if (!b) return;
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "not found" });
+          if (!job.worktreePath || !fs.existsSync(job.worktreePath)) {
+            return sendJson(res, 409, { error: "worktree no longer available — checkpoints can only be restored while the job's session is active" });
+          }
+          const ok = restoreCheckpoint(job.worktreePath, b.sha);
+          if (!ok) return sendJson(res, 500, { error: "failed to restore checkpoint" });
+          const updated = await getJob(id);
+          if (updated) broadcast({ type: "job.updated", job: updated });
+          return sendJson(res, 200, { ok: true });
         }
         if (method === "PATCH" && !action) {
           // In-place edits to a plan task: rename, re-prompt, reassign, or
@@ -428,11 +488,13 @@ export function startServer(port: number): http.Server {
             for (const d of [...subtree].reverse()) {
               await removeJob(d.id);
               clearOutput(d.id);
+              clearChat(d.id);
               broadcast({ type: "job.removed", id: d.id });
             }
           }
           await removeJob(id);
           clearOutput(id);
+          clearChat(id);
           broadcast({ type: "job.removed", id });
           return sendJson(res, 200, { ok: true });
         }
@@ -511,6 +573,7 @@ export function startServer(port: number): http.Server {
           const b = await parseBody(req, res, ReplyBodySchema);
           if (!b) return;
           const accepted = await deliverReply(id, b.text.trim(), b.images);
+          if (accepted) appendChat(id, "user", b.text.trim(), b.images); // persist the user turn (not broadcast — the client shows it optimistically)
           return accepted ? sendJson(res, 202, { ok: true }) : sendJson(res, 409, { error: "no live session for this job" });
         }
       }

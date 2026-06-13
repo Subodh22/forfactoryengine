@@ -100,7 +100,11 @@ export const UpdateProjectBodySchema = z.object({
   agentRules: z.string().optional(),
   color: z.string().optional(),
   sessionPrefix: z.string().optional(),
+  setupScript: z.string().optional(),
+  runScript: z.string().optional(),
 });
+
+export const RollbackBodySchema = z.object({ sha: z.string().trim().min(1) });
 
 export const GithubConnectBodySchema = z.object({ token: z.string().trim().min(1) });
 

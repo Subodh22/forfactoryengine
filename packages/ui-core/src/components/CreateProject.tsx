@@ -75,8 +75,8 @@ export function CreateProject({ onCreated }: Props) {
 
   return (
     <div className="max-w-[760px] mx-auto">
-      <div className="flex flex-col gap-4 p-6 bg-paper border-4 border-ink brutal-shadow">
-        <div className="flex items-center gap-2 pb-3 border-b-4 border-ink">
+      <div className="flex flex-col gap-4 p-6 bg-paper border border-[#332f28] brutal-shadow">
+        <div className="flex items-center gap-2 pb-3 border-b border-[#332f28]">
           <Sparkles className="w-4 h-4 text-ink" />
           <h2 className="font-display uppercase text-[15px] text-ink">Create a new project</h2>
         </div>
@@ -85,7 +85,7 @@ export function CreateProject({ onCreated }: Props) {
         </p>
 
         {!ghLogin && (
-          <p className="font-data text-[11px] uppercase text-ink bg-[#b8860b]/20 border-2 border-ink px-3 py-2">Connect GitHub (top right) to create repos.</p>
+          <p className="font-data text-[11px] uppercase text-ink bg-[#b8860b]/20 border border-[#332f28] px-3 py-2">Connect GitHub (top right) to create repos.</p>
         )}
 
         <form onSubmit={(e) => { e.preventDefault(); submit("guided"); }} className="flex flex-col gap-4">
@@ -109,10 +109,10 @@ export function CreateProject({ onCreated }: Props) {
           <div>
             <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Visibility</label>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setIsPrivate(true)} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
+              <button type="button" onClick={() => setIsPrivate(true)} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border border-[#332f28] transition-colors ${isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
                 <Lock className="w-3 h-3" /> Private
               </button>
-              <button type="button" onClick={() => setIsPrivate(false)} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${!isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
+              <button type="button" onClick={() => setIsPrivate(false)} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border border-[#332f28] transition-colors ${!isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
                 <Globe className="w-3 h-3" /> Public
               </button>
             </div>
@@ -122,7 +122,7 @@ export function CreateProject({ onCreated }: Props) {
             <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Color</label>
             <div className="flex gap-2">
               {COLORS.map((c) => (
-                <button key={c} type="button" onClick={() => setColor(c)} className="w-6 h-6 border-2 border-ink transition-all" style={{ backgroundColor: c, outline: color === c ? "2px solid var(--ink)" : "none", outlineOffset: "2px" }} />
+                <button key={c} type="button" onClick={() => setColor(c)} className="w-6 h-6 border border-[#332f28] transition-all" style={{ backgroundColor: c, outline: color === c ? "2px solid var(--ink)" : "none", outlineOffset: "2px" }} />
               ))}
             </div>
           </div>
@@ -135,7 +135,7 @@ export function CreateProject({ onCreated }: Props) {
                 <span className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5" />Create &amp; Plan</span>
               )}
             </Button>
-            <button type="button" onClick={() => submit("express")} disabled={!canSubmit} title="Skip the questions — plan and build immediately" className="font-data text-[12px] uppercase border-2 border-ink px-3 py-2 bg-concrete text-ink hover:bg-ink hover:text-concrete transition-colors disabled:opacity-40 flex items-center gap-1.5">
+            <button type="button" onClick={() => submit("express")} disabled={!canSubmit} title="Skip the questions — plan and build immediately" className="font-data text-[12px] uppercase border border-[#332f28] px-3 py-2 bg-concrete text-ink hover:bg-ink hover:text-concrete transition-colors disabled:opacity-40 flex items-center gap-1.5">
               ⚡ Express
             </button>
           </div>

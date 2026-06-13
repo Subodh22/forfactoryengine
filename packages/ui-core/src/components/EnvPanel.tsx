@@ -106,7 +106,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
 
   return (
     <div className="h-full flex flex-col max-w-3xl mx-auto w-full">
-      <div className="flex items-center justify-between gap-2 pb-4 mb-4 border-b-4 border-ink flex-shrink-0">
+      <div className="flex items-center justify-between gap-2 pb-4 mb-4 border-b border-[#332f28] flex-shrink-0">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <code className="font-display uppercase text-lg text-ink">.env</code>
@@ -119,16 +119,16 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button onClick={() => setReveal((v) => !v)} title={reveal ? "Hide values" : "Reveal values"} className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border-2 border-ink hover:bg-ink hover:text-concrete transition-colors">
+          <button onClick={() => setReveal((v) => !v)} title={reveal ? "Hide values" : "Reveal values"} className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border border-[#332f28] hover:bg-ink hover:text-concrete transition-colors">
             {reveal ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}{reveal ? "Hide" : "Reveal"}
           </button>
-          <button onClick={() => setRaw((v) => !v)} title={raw ? "Structured editor" : "Raw text editor"} className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border-2 border-ink hover:bg-ink hover:text-concrete transition-colors">
+          <button onClick={() => setRaw((v) => !v)} title={raw ? "Structured editor" : "Raw text editor"} className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border border-[#332f28] hover:bg-ink hover:text-concrete transition-colors">
             {raw ? <ListTree className="w-3 h-3" /> : <Braces className="w-3 h-3" />}{raw ? "Form" : "Raw"}
           </button>
-          <button onClick={load} disabled={loading} title="Reload from disk" className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border-2 border-ink hover:bg-ink hover:text-concrete transition-colors disabled:opacity-50">
+          <button onClick={load} disabled={loading} title="Reload from disk" className="flex items-center gap-1 px-2 py-1 font-data text-[10px] uppercase text-ink bg-concrete border border-[#332f28] hover:bg-ink hover:text-concrete transition-colors disabled:opacity-50">
             <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />Reload
           </button>
-          <button onClick={save} disabled={saving || loading || !dirty} className="flex items-center gap-1 px-3 py-1.5 font-data text-[10px] uppercase bg-ink text-concrete border-2 border-ink brutal-press disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none">
+          <button onClick={save} disabled={saving || loading || !dirty} className="flex items-center gap-1 px-3 py-1.5 font-data text-[10px] uppercase bg-ink text-concrete border border-[#332f28] brutal-press disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}Save
           </button>
         </div>
@@ -144,25 +144,25 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
             <p className="font-data text-[10px] uppercase text-muted mt-1">Clone the repo or update the project&apos;s local path in settings</p>
           </div>
         ) : raw ? (
-          <textarea value={current} onChange={(e) => setRows(parseEnv(e.target.value))} spellCheck={false} placeholder={"# KEY=value, one per line"} className="w-full h-full min-h-[300px] bg-paper border-[3px] border-ink p-3 font-mono text-xs text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] resize-none placeholder:text-muted" />
+          <textarea value={current} onChange={(e) => setRows(parseEnv(e.target.value))} spellCheck={false} placeholder={"# KEY=value, one per line"} className="w-full h-full min-h-[300px] bg-paper border border-[#332f28] p-3 font-mono text-xs text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] resize-none placeholder:text-muted" />
         ) : (
           <div className="flex flex-col gap-2">
             {rows.map((r) =>
               r.kind === "pair" ? (
                 <div key={r.id} className="flex items-center gap-1.5 group">
-                  <input value={r.key} onChange={(e) => updatePair(r.id, { key: e.target.value })} onPaste={(e) => handlePaste(e, r.id)} placeholder="KEY" spellCheck={false} className="w-2/5 bg-paper border-2 border-ink px-2.5 py-1.5 font-mono text-xs font-bold text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted" />
+                  <input value={r.key} onChange={(e) => updatePair(r.id, { key: e.target.value })} onPaste={(e) => handlePaste(e, r.id)} placeholder="KEY" spellCheck={false} className="w-2/5 bg-paper border border-[#332f28] px-2.5 py-1.5 font-mono text-xs font-bold text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted" />
                   <span className="text-ink text-xs font-bold">=</span>
-                  <input value={r.value} onChange={(e) => updatePair(r.id, { value: e.target.value })} placeholder="value" spellCheck={false} type={!reveal && looksSecret(r.key) ? "password" : "text"} className="flex-1 bg-paper border-2 border-ink px-2.5 py-1.5 font-mono text-xs text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted" />
+                  <input value={r.value} onChange={(e) => updatePair(r.id, { value: e.target.value })} placeholder="value" spellCheck={false} type={!reveal && looksSecret(r.key) ? "password" : "text"} className="flex-1 bg-paper border border-[#332f28] px-2.5 py-1.5 font-mono text-xs text-ink outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] placeholder:text-muted" />
                   <button onClick={() => removeRow(r.id)} title="Remove" className="text-muted hover:text-[#d6210f] p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               ) : (
                 <div key={r.id} className="flex items-center gap-1.5 group">
-                  <input value={r.text} onChange={(e) => updateRaw(r.id, e.target.value)} placeholder="# comment" spellCheck={false} className="flex-1 bg-transparent border-2 border-transparent px-2.5 py-1 font-mono text-xs text-muted outline-none focus:border-ink focus:bg-paper" />
+                  <input value={r.text} onChange={(e) => updateRaw(r.id, e.target.value)} placeholder="# comment" spellCheck={false} className="flex-1 bg-transparent border border-transparent px-2.5 py-1 font-mono text-xs text-muted outline-none focus:border-[#332f28] focus:bg-paper" />
                   <button onClick={() => removeRow(r.id)} title="Remove" className="text-muted hover:text-[#d6210f] p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               ),
             )}
-            <button onClick={addPair} className="flex items-center gap-1.5 mt-1 px-2.5 py-1.5 font-data text-[11px] uppercase text-ink border-2 border-dashed border-ink hover:bg-ink hover:text-concrete transition-colors w-fit">
+            <button onClick={addPair} className="flex items-center gap-1.5 mt-1 px-2.5 py-1.5 font-data text-[11px] uppercase text-ink border border-dashed border-[#332f28] hover:bg-ink hover:text-concrete transition-colors w-fit">
               <Plus className="w-3.5 h-3.5" /> Add variable
             </button>
           </div>

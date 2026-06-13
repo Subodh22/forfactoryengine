@@ -6,6 +6,9 @@ import { StatusBadge } from "./StatusBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { DiffViewer } from "./DiffViewer";
+import { MentionInput } from "./MentionInput";
+import { Markdown } from "./Markdown";
+import { CheckpointsBar } from "./CheckpointsBar";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
 import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
@@ -13,6 +16,8 @@ import { uploadFiles } from "@/lib/api";
 interface Props {
   jobId: string;
   onRedo?: (newJobId: string) => void;
+  /** Hide the "Changes" tab — used when a sibling pane (RightDock) owns the diff. */
+  hideChanges?: boolean;
 }
 
 type LineType = "tool" | "bash" | "stderr" | "factory" | "error" | "divider" | "text";
@@ -39,7 +44,7 @@ function lineClass(type: LineType): string {
   }
 }
 
-export function JobDetail({ jobId, onRedo }: Props) {
+export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
   const job = useJob(jobId);
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -63,7 +68,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
   const [sending, setSending] = useState(false);
   const [showError, setShowError] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"output" | "chat" | "changes">("output");
+  const [activeTab, setActiveTab] = useState<"output" | "chat" | "changes">("chat");
   const [unseenChat, setUnseenChat] = useState(false);
   const [unseenOutput, setUnseenOutput] = useState(false);
   const prevMessagesLen = useRef(messages.length);
@@ -170,8 +175,8 @@ export function JobDetail({ jobId, onRedo }: Props) {
     }
   }
 
-  async function handleReply(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleReply(e?: React.FormEvent) {
+    e?.preventDefault();
     if ((!reply.trim() && !attachedFiles.length) || sending) return;
     setSending(true);
     const text = reply.trim();
@@ -201,7 +206,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b-4 border-ink flex-shrink-0 bg-concrete">
+      <div className="p-4 border-b border-[#332f28] flex-shrink-0 bg-concrete">
         <div className="flex items-start justify-between gap-3 mb-2">
           <h2 className="text-sm font-bold uppercase text-ink leading-snug">{job.title}</h2>
           <StatusBadge status={job.status} />
@@ -240,21 +245,21 @@ export function JobDetail({ jobId, onRedo }: Props) {
                 }
               }}
               disabled={cancelling}
-              className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border-2 border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete transition-colors disabled:opacity-40"
               title="Cancel this job"
             >
               <Square className="w-2.5 h-2.5" />{cancelling ? "Cancelling…" : "Cancel"}
             </button>
           )}
           {isFinished && (
-            <button onClick={() => setRedoOpen((o) => !o)} className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors" title="Re-run this job from scratch">
+            <button onClick={() => setRedoOpen((o) => !o)} className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors" title="Re-run this job from scratch">
               <RotateCcw className="w-2.5 h-2.5" />Redo
             </button>
           )}
         </div>
 
         {isFinished && redoOpen && (
-          <form onSubmit={handleRedo} className="mt-3 p-3 border-2 border-ink bg-paper space-y-2" onDrop={(e) => { e.preventDefault(); const files = Array.from(e.dataTransfer.files); if (files.length) addFiles(files, setRedoImages); }} onDragOver={(e) => e.preventDefault()}>
+          <form onSubmit={handleRedo} className="mt-3 p-3 border border-[#332f28] bg-paper space-y-2" onDrop={(e) => { e.preventDefault(); const files = Array.from(e.dataTransfer.files); if (files.length) addFiles(files, setRedoImages); }} onDragOver={(e) => e.preventDefault()}>
             <p className="font-data text-[10px] uppercase text-muted">Re-runs in a fresh worktree. Add extra instructions or images below (optional).</p>
             <textarea
               value={redoPrompt}
@@ -262,7 +267,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
               placeholder="Anything to change or add this time… (paste screenshots, optional)"
               rows={2}
               onPaste={(e) => { const files = Array.from(e.clipboardData.files); if (files.length) addFiles(files, setRedoImages); }}
-              className="w-full bg-concrete border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] resize-none"
+              className="w-full bg-concrete border border-[#332f28] px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] resize-none"
             />
             {redoImages.length > 0 && (
               <div className="flex gap-2 flex-wrap">
@@ -273,9 +278,9 @@ export function JobDetail({ jobId, onRedo }: Props) {
             )}
             <div className="flex items-center gap-2">
               <input ref={redoFileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files, setRedoImages); e.target.value = ""; }} />
-              <button type="button" onClick={() => redoFileInputRef.current?.click()} className="px-2 py-1.5 bg-concrete border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors" title="Attach image"><Paperclip className="w-3.5 h-3.5" /></button>
-              <button type="button" onClick={() => captureScreen(setRedoImages)} className="px-2 py-1.5 bg-concrete border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
-              <button type="submit" disabled={redoing} className="px-3 py-1.5 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><RotateCcw className="w-3 h-3" />{redoing ? "Queuing…" : "Run again"}</button>
+              <button type="button" onClick={() => redoFileInputRef.current?.click()} className="px-2 py-1.5 bg-concrete border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors" title="Attach image"><Paperclip className="w-3.5 h-3.5" /></button>
+              <button type="button" onClick={() => captureScreen(setRedoImages)} className="px-2 py-1.5 bg-concrete border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
+              <button type="submit" disabled={redoing} className="px-3 py-1.5 bg-ink text-concrete border border-[#332f28] disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><RotateCcw className="w-3 h-3" />{redoing ? "Queuing…" : "Run again"}</button>
               <button type="button" onClick={() => setRedoOpen(false)} className="px-2 py-1.5 font-data text-[10px] uppercase text-muted hover:text-ink transition-colors">Cancel</button>
             </div>
           </form>
@@ -290,18 +295,20 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <div className={`absolute h-full w-1/3 ${isStuck ? "bg-red-500" : isThinking ? "bg-amber-500" : "bg-[#3bd16f]"}`} style={{ animation: "slide 2s linear infinite" }} />
           </div>
         )}
-        <div className="px-4 py-0 border-b-2 border-[#2a2722] flex items-center gap-0 flex-shrink-0 bg-ink">
-          <button onClick={() => setActiveTab("output")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "output" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
-            Agent Output
-            {unseenOutput && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
-          </button>
-          <button onClick={() => setActiveTab("chat")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "chat" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
+        <div className="px-3 py-0 border-b border-[#2a2722] flex items-center gap-1 flex-shrink-0 bg-concrete">
+          <button onClick={() => setActiveTab("chat")} className={`px-2.5 py-2 text-[12px] flex items-center gap-1.5 border-b -mb-px transition-colors ${activeTab === "chat" ? "text-ink border-[#b08a3e]" : "text-muted border-transparent hover:text-ink"}`}>
             Chat
-            {unseenChat && <span className="w-1.5 h-1.5 bg-[#3bd16f] rounded-full flex-shrink-0" />}
+            {unseenChat && <span className="w-1.5 h-1.5 bg-[#b08a3e] rounded-full flex-shrink-0" />}
           </button>
-          <button onClick={() => setActiveTab("changes")} className={`px-3 py-2 font-data text-[10px] tracking-widest uppercase flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === "changes" ? "text-[#3bd16f] border-[#3bd16f]" : "text-[#6b8a6b] border-transparent hover:text-[#cfe8cf]"}`}>
-            Changes
+          <button onClick={() => setActiveTab("output")} className={`px-2.5 py-2 text-[12px] flex items-center gap-1.5 border-b -mb-px transition-colors ${activeTab === "output" ? "text-ink border-[#b08a3e]" : "text-muted border-transparent hover:text-ink"}`}>
+            Logs
+            {unseenOutput && <span className="w-1.5 h-1.5 bg-[#b08a3e] rounded-full flex-shrink-0" />}
           </button>
+          {!hideChanges && (
+            <button onClick={() => setActiveTab("changes")} className={`px-2.5 py-2 text-[12px] flex items-center gap-1.5 border-b -mb-px transition-colors ${activeTab === "changes" ? "text-ink border-[#b08a3e]" : "text-muted border-transparent hover:text-ink"}`}>
+              Changes
+            </button>
+          )}
           <span className="flex-1" />
           {isRunning && isStuck ? (
             <span className="flex items-center gap-1.5 font-data text-[10px] text-red-400"><span className="w-1.5 h-1.5 bg-red-400 animate-pulse flex-shrink-0" />no output {silentSecs}s</span>
@@ -315,7 +322,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
         </div>
 
         {activeTab === "output" && (
-          <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
+          <div className="flex-1 overflow-y-auto bg-surface-deep p-4 min-h-0">
             {output ? (
               <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
                 {output.split("\n").map((raw, i) => {
@@ -331,29 +338,57 @@ export function JobDetail({ jobId, onRedo }: Props) {
             <div ref={bottomRef} />
           </div>
         )}
-        {activeTab === "changes" && (
-          <div className="flex-1 overflow-y-auto bg-ink min-h-0">
+        {!hideChanges && activeTab === "changes" && (
+          <div className="flex-1 overflow-y-auto bg-surface-deep min-h-0">
             <DiffViewer jobId={jobId} refreshKey={job.status} />
           </div>
         )}
         {activeTab === "chat" && (
-          <div className="flex-1 overflow-y-auto bg-ink p-4 min-h-0">
+          <div className="flex-1 overflow-y-auto bg-concrete px-4 py-4 min-h-0">
+            <div className="max-w-[820px] mx-auto"><CheckpointsBar jobId={jobId} refreshKey={`${job.status}-${messages.length}`} /></div>
             {messages.length > 0 ? (
-              <div className="space-y-3">
+              <div className="max-w-[820px] mx-auto space-y-5">
                 {messages.map((msg) => (
-                  <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                    <div className="font-data text-[10px] font-bold uppercase mt-0.5 flex-shrink-0 text-[#6b8a6b]">{msg.role === "assistant" ? "Claude" : "You"}</div>
-                    <div className={`text-xs px-3 py-2 max-w-[85%] whitespace-pre-wrap border-2 ${msg.role === "assistant" ? "border-[#3a3a34] bg-[#1a1a16] text-[#cfe8cf]" : "border-[#3bd16f] bg-[#3bd16f]/10 text-[#cfe8cf]"}`}>
+                  msg.role === "assistant" ? (
+                    <div key={msg.id} className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted">
+                        <span className="w-3.5 h-3.5 rounded-[4px] bg-[#b08a3e] inline-block" />
+                        <span className="font-medium text-ink/70">Claude</span>
+                      </div>
                       {msg.images && msg.images.length > 0 && (
-                        <div className="flex gap-1.5 flex-wrap mb-1.5">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
+                        <div className="flex gap-1.5 flex-wrap mb-1">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
                       )}
-                      {msg.text}
+                      <Markdown text={msg.text} />
                     </div>
-                  </div>
+                  ) : (
+                    <div key={msg.id} className="flex flex-col items-end gap-1.5">
+                      <span className="text-[11px] text-muted">You</span>
+                      <div className="max-w-[85%] rounded-xl rounded-tr-sm bg-concrete-2 border border-[#332f28] px-3.5 py-2.5 text-[13px] text-ink/90 whitespace-pre-wrap leading-relaxed">
+                        {msg.images && msg.images.length > 0 && (
+                          <div className="flex gap-1.5 flex-wrap mb-1.5">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
+                        )}
+                        {msg.text}
+                      </div>
+                    </div>
+                  )
                 ))}
+                {(isRunning || isDelegating) && (
+                  <div className="flex items-center gap-2 text-[12px] text-muted">
+                    <span className="w-3.5 h-3.5 rounded-[4px] bg-[#b08a3e]/60 inline-block animate-pulse" />
+                    <span className="flex gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </span>
+                    <span>{isThinking ? "thinking…" : activeTool ? activeTool : "working…"}</span>
+                  </div>
+                )}
               </div>
             ) : (
-              <p className="text-xs text-[#6b8a6b] italic font-mono">No chat messages yet…</p>
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
+                <p className="text-[13px] text-ink/70">{isRunning || isDelegating ? "Claude is working…" : "No messages yet"}</p>
+                <p className="font-data text-[11px] text-muted">{isPending ? "This workspace hasn't started — Run it from the board." : "Replies and Claude's responses appear here."}</p>
+              </div>
             )}
             <div ref={bottomRef} />
           </div>
@@ -363,7 +398,7 @@ export function JobDetail({ jobId, onRedo }: Props) {
       {isEpic && <DelegatorPanel epicId={jobId} />}
 
       {canChat && (
-        <div className={`border-t-4 p-3 flex-shrink-0 ${isWaiting ? "border-ink bg-[#b8860b]/15" : "border-ink bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+        <div className={`border-t p-3 flex-shrink-0 ${isWaiting ? "border-[#332f28] bg-[#b8860b]/15" : "border-[#332f28] bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
           {isPending && <p className="font-data text-[10px] uppercase text-muted mb-2">Add instructions or images before this job runs</p>}
           {isWaiting && <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">Claude has a question — reply to continue</p>}
           {isDelegating && <p className="font-data text-[10px] uppercase text-muted mb-2">Talk to Claude about this epic — opens a session in the integration branch</p>}
@@ -372,18 +407,26 @@ export function JobDetail({ jobId, onRedo }: Props) {
           {attachedFiles.length > 0 && (
             <div className="flex gap-2 mb-2 flex-wrap">{attachedFiles.map((src, i) => <AttachmentPreview key={i} src={src} size={56} onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))} />)}</div>
           )}
-          <form onSubmit={handleReply} className="flex gap-2">
+          <form onSubmit={handleReply} className="flex gap-2 items-end">
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 bg-paper border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors flex-shrink-0" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
-            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={isPending ? "Add to prompt… (paste screenshots)" : isWaiting ? "Reply to Claude… (paste screenshots)" : isRunning ? "Queue a message… (paste screenshots)" : "Message Claude… (paste screenshots)"} onPaste={onPaste} className="flex-1 bg-paper border-2 border-ink px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow" autoFocus={isWaiting} />
-            <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-3 py-2 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><Send className="w-3 h-3" />{sending ? "…" : "Send"}</button>
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
+            <MentionInput
+              jobId={jobId}
+              value={reply}
+              onChange={setReply}
+              onSubmit={() => handleReply()}
+              onPaste={onPaste}
+              autoFocus={isWaiting}
+              placeholder={isPending ? "Add to prompt…  @file  /command" : isWaiting ? "Reply to Claude…  @file  /command" : isRunning ? "Queue a message…  @file  /command" : "Message Claude…  @file  /command"}
+            />
+            <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-3 py-2 rounded-md bg-[#b08a3e] text-[#14110e] font-bold disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 flex-shrink-0 hover:brightness-110 transition-all"><Send className="w-3 h-3" />{sending ? "…" : "Send"}</button>
           </form>
         </div>
       )}
 
       {job.error && (
-        <div className="border-t-4 border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
+        <div className="border-t border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
           <button onClick={() => setShowError(v => !v)} className="w-full flex items-center justify-between px-4 py-2 font-data text-[10px] font-bold text-[#d6210f] uppercase tracking-widest hover:bg-[#d6210f]/10 transition-colors">
             <span>Error</span>
             {showError ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}

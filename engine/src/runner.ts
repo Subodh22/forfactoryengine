@@ -1,15 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import {
   getJob, getProject, getSetting, listJobsByStatus, listProjects, updateUsage, patchJob, patchJobIf,
-  updateProject, rootEpicOf, type Job, type JobStatus, type Project,
+  updateProject, rootEpicOf, addCheckpoint, type Job, type JobStatus, type Project,
 } from "./db";
 import { emitOutput, emitChat } from "./events";
 import { updateStatus } from "./status";
 import { createClaudeSession, type ClaudeSession, type ClaudeSessionOptions, type TurnResult } from "./agent/claude-runner";
 import {
   createWorktree, removeWorktree, getChangedFiles, commitAndPushDirect, ensureRepoCloned,
-  ensureEpicWorktree, commitOnly, mergeIntoBranch, pushBranch,
+  ensureEpicWorktree, commitOnly, mergeIntoBranch, pushBranch, createCheckpoint,
 } from "./agent/worktree";
 import { createPR } from "./agent/github";
 import { buildRepoMap } from "./agent/repo-map";
@@ -221,6 +222,29 @@ function copyEnvToWorktree(repoPath: string, worktreePath: string) {
   try { fs.copyFileSync(src, path.join(worktreePath, ".env")); } catch { /* non-fatal */ }
 }
 
+/** Run the project's setup script in a freshly-created worktree (install deps,
+ *  copy config, etc.) before the agent starts. Async + non-blocking so it can't
+ *  stall the event loop; output streams to the job log. Best-effort. */
+function runSetupScript(worktreePath: string, script: string, jobId: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!script.trim()) return resolve();
+    log(jobId, "Running setup script…");
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    try {
+      const child = spawn(script, { cwd: worktreePath, shell: true });
+      child.stdout.on("data", (d) => emitOutput(jobId, `\x00bash\x00${d}`));
+      child.stderr.on("data", (d) => emitOutput(jobId, `\x00stderr\x00${d}`));
+      const timer = setTimeout(() => { child.kill(); log(jobId, "Setup script timed out (180s) — continuing."); finish(); }, 180_000);
+      child.on("exit", (code) => { clearTimeout(timer); log(jobId, `Setup script finished (exit ${code ?? 0}).`); finish(); });
+      child.on("error", (e) => { clearTimeout(timer); log(jobId, `Setup script error: ${e}`); finish(); });
+    } catch (e) {
+      log(jobId, `Setup script failed to start: ${e}`);
+      finish();
+    }
+  });
+}
+
 function readClaudeMd(dir: string): string | null {
   const p = path.join(dir, "CLAUDE.md");
   try { return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null; } catch { return null; }
@@ -324,6 +348,7 @@ export async function startJob(jobId: string): Promise<void> {
       copyEnvToWorktree(project.localPath, worktreePath);
       log(jobId, `Worktree ready: ${worktreePath}  (branch ${branch})`);
       await updateStatus(jobId, "running", { worktreePath, branch });
+      if (project.setupScript) await runSetupScript(worktreePath, project.setupScript, jobId);
     }
 
     log(jobId, "Launching Claude Code CLI...");
@@ -437,6 +462,17 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
 
   const changedFiles = getChangedFiles(worktreePath);
   log(jobId, `Changed files: ${changedFiles.length > 0 ? changedFiles.join(", ") : "none"}`);
+
+  // Snapshot this turn so the user can rewind to it later. Best-effort: a
+  // dangling commit-tree object that never moves HEAD, so it can't disturb the
+  // commit/push flow below. Wrapped so a failure can never break the job.
+  if (changedFiles.length > 0) {
+    try {
+      const label = (claudeResponse.split("\n").find((l) => l.trim()) ?? title).slice(0, 120);
+      const sha = createCheckpoint(worktreePath, `checkpoint: ${label}`);
+      if (sha) await addCheckpoint(jobId, sha, label);
+    } catch { /* checkpoints are best-effort */ }
+  }
 
   if (changedFiles.length === 0) {
     // A question with no changes → wait for the user to reply in the chat panel.

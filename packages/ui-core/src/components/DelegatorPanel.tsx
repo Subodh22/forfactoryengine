@@ -26,8 +26,8 @@ export function DelegatorPanel({ epicId }: { epicId: string }) {
   const done = all.filter((c) => c.status === "completed").length;
 
   return (
-    <div className="border-t-4 border-ink bg-concrete flex-shrink-0 max-h-[60vh] overflow-y-auto">
-      <div className="px-4 py-2 border-b-2 border-ink flex items-center justify-between sticky top-0 bg-concrete z-10">
+    <div className="border-t border-[#332f28] bg-concrete flex-shrink-0 max-h-[60vh] overflow-y-auto">
+      <div className="px-4 py-2 border-b border-[#332f28] flex items-center justify-between sticky top-0 bg-concrete z-10">
         <span className="font-data text-[10px] text-muted tracking-widest uppercase">Tasks</span>
         <span className="font-data text-[10px] text-ink font-bold">{done}/{all.length} done</span>
       </div>
@@ -69,7 +69,7 @@ function ChildRow({ child, titleById, depth }: { child: Job; titleById: Map<stri
             <button
               onClick={() => guard(() => setTaskDone(child.id, !isDone))}
               title={isDone ? "Done — click to reopen" : "Mark done"}
-              className={`mt-0.5 flex-shrink-0 w-4 h-4 border-2 border-ink flex items-center justify-center transition-colors ${isDone ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
+              className={`mt-0.5 flex-shrink-0 w-4 h-4 border border-[#332f28] flex items-center justify-center transition-colors ${isDone ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
             >
               {isDone && <Check className="w-3 h-3" />}
             </button>
@@ -87,7 +87,7 @@ function ChildRow({ child, titleById, depth }: { child: Job; titleById: Map<stri
                 <button
                   onClick={() => guard(() => setAssignee(child.id, isHuman ? "agent" : "human"))}
                   title={isHuman ? "Hand to the agent" : "Do it myself"}
-                  className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[9px] uppercase border border-ink/40 text-muted hover:bg-ink hover:text-paper hover:border-ink transition-colors"
+                  className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[9px] uppercase border border-[#332f28]/40 text-muted hover:bg-ink hover:text-paper hover:border-[#332f28] transition-colors"
                 >
                   {isHuman ? <Bot className="w-2.5 h-2.5" /> : <Hand className="w-2.5 h-2.5" />}
                   {isHuman ? "To agent" : "To me"}
@@ -96,12 +96,12 @@ function ChildRow({ child, titleById, depth }: { child: Job; titleById: Map<stri
 
               {/* Run an agent task */}
               {!isHuman && child.status === "pending" && (
-                <button onClick={() => guard(() => queueJob(child.id), "Running task")} disabled={busy} className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[10px] uppercase border-2 border-ink bg-ink text-paper hover:opacity-80 transition-opacity disabled:opacity-40" title="Run this task now">
+                <button onClick={() => guard(() => queueJob(child.id), "Running task")} disabled={busy} className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[10px] uppercase border border-[#332f28] bg-ink text-paper hover:opacity-80 transition-opacity disabled:opacity-40" title="Run this task now">
                   <Play className="w-2.5 h-2.5" /> Run
                 </button>
               )}
               {!isHuman && child.status === "failed" && (
-                <button onClick={() => guard(() => requeueJob(child.id), "Retrying task")} disabled={busy} className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[10px] uppercase border-2 border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete transition-colors disabled:opacity-40" title="Re-run this task">
+                <button onClick={() => guard(() => requeueJob(child.id), "Retrying task")} disabled={busy} className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[10px] uppercase border border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete transition-colors disabled:opacity-40" title="Re-run this task">
                   <RotateCcw className="w-2.5 h-2.5" /> Retry
                 </button>
               )}
@@ -110,7 +110,7 @@ function ChildRow({ child, titleById, depth }: { child: Job; titleById: Map<stri
             {child.touchedPaths.length > 0 && (
               <div className="flex gap-1 flex-wrap mt-1">
                 {child.touchedPaths.slice(0, 6).map((p, i) => (
-                  <span key={i} className="font-data text-[9px] text-ink/70 border border-ink/30 px-1 inline-flex items-center gap-0.5"><GitBranch className="w-2 h-2" />{p}</span>
+                  <span key={i} className="font-data text-[9px] text-ink/70 border border-[#332f28]/30 px-1 inline-flex items-center gap-0.5"><GitBranch className="w-2 h-2" />{p}</span>
                 ))}
               </div>
             )}
@@ -120,7 +120,7 @@ function ChildRow({ child, titleById, depth }: { child: Job; titleById: Map<stri
         {open && (
           <div className="mt-2 ml-5">
             {child.prompt && <p className="font-mono text-[11px] text-ink/80 whitespace-pre-wrap mb-2">{child.prompt}</p>}
-            {child.error && <pre className="text-[10px] text-[#a8190b] font-mono whitespace-pre-wrap border-2 border-[#d6210f]/40 bg-[#d6210f]/10 p-2 mb-2">{child.error}</pre>}
+            {child.error && <pre className="text-[10px] text-[#a8190b] font-mono whitespace-pre-wrap border border-[#d6210f]/40 bg-[#d6210f]/10 p-2 mb-2">{child.error}</pre>}
             {!isHuman && active && <ChildTerminal jobId={child.id} waiting={child.status === "waiting_for_input"} />}
             {!isHuman && !active && !child.prompt && (
               <p className="font-data text-[10px] text-muted uppercase">{child.status === "pending" ? "Not started — click Run." : "No live output."}</p>
@@ -157,7 +157,7 @@ function ChildTerminal({ jobId, waiting }: { jobId: string; waiting: boolean }) 
 
   return (
     <div>
-      <div className="bg-ink p-2 max-h-40 overflow-y-auto">
+      <div className="bg-surface-deep p-2 max-h-40 overflow-y-auto">
         {output ? (
           <pre className="text-[10px] font-mono whitespace-pre-wrap leading-relaxed text-[#cfe8cf]">
             {output.split("\n").map((raw, i) => (raw ? <span key={i}>{cleanLine(raw)}{"\n"}</span> : <span key={i}>{"\n"}</span>))}
@@ -169,8 +169,8 @@ function ChildTerminal({ jobId, waiting }: { jobId: string; waiting: boolean }) 
       </div>
       {waiting && (
         <form onSubmit={send} className="flex gap-2 mt-2">
-          <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to this subtask…" className="flex-1 bg-paper border-2 border-ink px-2 py-1.5 font-mono text-[11px] text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)]" autoFocus />
-          <button type="submit" disabled={!reply.trim() || sending} className="px-2 py-1.5 bg-ink text-concrete border-2 border-ink disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><Send className="w-3 h-3" /> {sending ? "…" : "Send"}</button>
+          <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to this subtask…" className="flex-1 bg-paper border border-[#332f28] px-2 py-1.5 font-mono text-[11px] text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)]" autoFocus />
+          <button type="submit" disabled={!reply.trim() || sending} className="px-2 py-1.5 bg-ink text-concrete border border-[#332f28] disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><Send className="w-3 h-3" /> {sending ? "…" : "Send"}</button>
         </form>
       )}
     </div>

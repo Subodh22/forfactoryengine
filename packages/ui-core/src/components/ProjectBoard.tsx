@@ -12,14 +12,14 @@ export function ProjectBoard({ projectId, onSelectJob }: { projectId?: string; o
 
   return (
     <div className="h-full flex flex-col gap-3">
-      <div className="flex border-2 border-ink w-max">
+      <div className="flex border border-[#332f28] w-max">
         <button
           onClick={() => setView("list")}
           className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 transition-colors ${view === "list" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
         ><ListIcon className="w-3 h-3" /> List</button>
         <button
           onClick={() => setView("board")}
-          className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 border-l-2 border-ink transition-colors ${view === "board" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
+          className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 border-l border-[#332f28] transition-colors ${view === "board" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
         ><LayoutGrid className="w-3 h-3" /> Board</button>
       </div>
 

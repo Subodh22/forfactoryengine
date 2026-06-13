@@ -14,9 +14,9 @@ export function AttachmentPreview({ src, onRemove, size = 64 }: Props) {
   return (
     <div className="relative group">
       {parsed?.isImage ? (
-        <img src={src} alt="" style={dim} className="object-cover border-2 border-ink" />
+        <img src={src} alt="" style={dim} className="object-cover border border-[#332f28]" />
       ) : (
-        <div style={dim} title={attachmentLabel(src)} className="flex flex-col items-center justify-center gap-1 border-2 border-ink bg-paper px-1.5 text-center">
+        <div style={dim} title={attachmentLabel(src)} className="flex flex-col items-center justify-center gap-1 border border-[#332f28] bg-paper px-1.5 text-center">
           <FileText className="w-4 h-4 text-ink shrink-0" />
           <span className="font-data text-[9px] leading-tight text-ink truncate w-full">{attachmentLabel(src)}</span>
         </div>
@@ -25,7 +25,7 @@ export function AttachmentPreview({ src, onRemove, size = 64 }: Props) {
         <button
           type="button"
           onClick={onRemove}
-          className="absolute -top-1.5 -right-1.5 bg-ink border-2 border-ink p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute -top-1.5 -right-1.5 bg-ink border border-[#332f28] p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
         >
           <X className="w-2.5 h-2.5 text-concrete" />
         </button>

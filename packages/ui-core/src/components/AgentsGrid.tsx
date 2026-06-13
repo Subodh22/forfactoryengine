@@ -34,7 +34,7 @@ function MiniTerminal({ jobId, isRunning }: { jobId: string; isRunning: boolean 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [output]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-ink p-3 min-h-0 font-mono text-[10px]">
+    <div className="flex-1 overflow-y-auto bg-surface-deep p-3 min-h-0 font-mono text-[10px]">
       {output ? (
         <pre className="whitespace-pre-wrap leading-relaxed">
           {output.split("\n").map((raw, i) => {
@@ -77,14 +77,14 @@ function AgentCard({ jobId, projectName, projectColor }: { jobId: string; projec
   const elapsed = job.startedAt > 0 ? Math.round(((isRunning ? now : (job.completedAt || now)) - job.startedAt) / 1000) : null;
 
   return (
-    <div className="flex flex-col bg-ink border-[3px] border-ink brutal-shadow-sm overflow-hidden flex-shrink-0" style={{ height: 320, width: 420 }}>
+    <div className="flex flex-col bg-surface-deep border border-[#2a2722] rounded-lg brutal-shadow-sm overflow-hidden flex-shrink-0" style={{ height: 320, width: 420 }}>
       {isRunning && (
         <div className="h-1 w-full bg-[#2a2722] overflow-hidden relative flex-shrink-0">
           <style>{`@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}`}</style>
           <div className="absolute h-full w-1/3 bg-[#3bd16f]" style={{ animation: "slide 2s linear infinite" }} />
         </div>
       )}
-      <div className="flex items-center justify-between px-3 py-2 border-b-[3px] border-ink bg-concrete flex-shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#332f28] bg-concrete flex-shrink-0">
         <div className="flex-1 mr-2 min-w-0">
           <span className="text-[11px] font-bold uppercase text-ink truncate block leading-tight">{job.title}</span>
           {projectName && <span className="font-data text-[9px] uppercase" style={{ color: projectColor ?? "#6b675f" }}>{projectName}</span>}
@@ -92,7 +92,7 @@ function AgentCard({ jobId, projectName, projectColor }: { jobId: string; projec
         <div className="flex items-center gap-2 flex-shrink-0">
           {elapsed !== null && <span className="flex items-center gap-1 font-data text-[10px] text-muted"><Clock className="w-2.5 h-2.5" />{elapsed}s</span>}
           {canStop && (
-            <button onClick={handleStop} disabled={stopping} title="Stop this agent" className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[10px] uppercase border-2 border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete disabled:opacity-40 transition-colors">
+            <button onClick={handleStop} disabled={stopping} title="Stop this agent" className="flex items-center gap-1 px-1.5 py-0.5 font-data text-[10px] uppercase border border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete disabled:opacity-40 transition-colors">
               <Square className="w-2.5 h-2.5 fill-current" />{stopping ? "Stopping…" : "Stop"}
             </button>
           )}
@@ -101,7 +101,7 @@ function AgentCard({ jobId, projectName, projectColor }: { jobId: string; projec
       </div>
 
       {(job.branch || job.prUrl) && (
-        <div className="flex items-center gap-3 px-3 py-1.5 border-b-2 border-[#2a2722] bg-ink flex-shrink-0">
+        <div className="flex items-center gap-3 px-3 py-1.5 border-b border-[#2a2722] bg-concrete flex-shrink-0">
           {job.branch && <span className="flex items-center gap-1 font-data text-[10px] text-[#6b8a6b]"><GitBranch className="w-2.5 h-2.5" />{job.branch}</span>}
           {job.prUrl && <a href={job.prUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-data text-[10px] text-[#cfe8cf] hover:underline"><ExternalLink className="w-2.5 h-2.5" />PR #{job.prNumber}</a>}
         </div>
@@ -110,7 +110,7 @@ function AgentCard({ jobId, projectName, projectColor }: { jobId: string; projec
       <MiniTerminal jobId={jobId} isRunning={isRunning} />
 
       {job.error && (
-        <div className="px-3 py-2 border-t-2 border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
+        <div className="px-3 py-2 border-t border-[#d6210f] bg-[#d6210f]/15 flex-shrink-0">
           <p className="text-[10px] text-[#ff8a7a] font-mono truncate">{job.error}</p>
         </div>
       )}
@@ -157,7 +157,7 @@ export function AgentsGrid({ projectId }: { projectId?: string }) {
         {FILTERS.map((f) => {
           const selected = filter === f.key;
           return (
-            <button key={f.key} onClick={() => setFilter(f.key)} className={`flex items-center gap-1.5 px-2.5 py-1 font-data text-[11px] uppercase border-2 border-ink transition-colors ${selected ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
+            <button key={f.key} onClick={() => setFilter(f.key)} className={`flex items-center gap-1.5 px-2.5 py-1 font-data text-[11px] uppercase border border-[#332f28] transition-colors ${selected ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
               {f.label}<span className="tabular-nums">{counts[f.key]}</span>
             </button>
           );
@@ -166,7 +166,7 @@ export function AgentsGrid({ projectId }: { projectId?: string }) {
 
       {displayJobs.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center">
-          <div className="w-14 h-14 border-[3px] border-ink flex items-center justify-center"><span className="text-xl">⚡</span></div>
+          <div className="w-14 h-14 border border-[#332f28] flex items-center justify-center"><span className="text-xl">⚡</span></div>
           <p className="font-display uppercase text-sm text-ink">{filter === "all" ? "No agents running" : `No ${activeFilter.label.toLowerCase()} agents`}</p>
           {filter === "all" && <p className="font-data text-[11px] uppercase text-muted">Queue some jobs and click Run to start parallel execution</p>}
         </div>

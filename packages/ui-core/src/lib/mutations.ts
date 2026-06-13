@@ -158,4 +158,40 @@ export const getEnv = (localPath: string) =>
 export const saveEnv = (localPath: string, content: string) =>
   api("/api/projects/env", { method: "POST", body: JSON.stringify({ localPath, content }) });
 
+// ── Workspace files ("All files" tab) ───────────────────────────────────────
+export const fetchJobFiles = (id: string) =>
+  api<{ files: string[]; truncated: boolean; root: string }>(`/api/jobs/${id}/files`);
+
+export const fetchJobFile = (id: string, path: string) =>
+  api<{ content: string; truncated: boolean; binary: boolean }>(
+    `/api/jobs/${id}/file?path=${encodeURIComponent(path)}`,
+  );
+
+// ── Checks ("Checks" tab) ────────────────────────────────────────────────────
+export interface CheckRun {
+  name: string;
+  status: string;            // queued | in_progress | completed
+  conclusion: string | null; // success | failure | neutral | cancelled | …
+  url: string | null;
+}
+
+export const fetchJobChecks = (id: string) =>
+  api<{ checks: CheckRun[]; state: string; error?: string }>(`/api/jobs/${id}/checks`);
+
+// ── Checkpoints (per-turn worktree snapshots) ───────────────────────────────
+export interface Checkpoint {
+  id: string;
+  jobId: string;
+  turn: number;
+  sha: string;
+  label: string;
+  createdAt: number;
+}
+
+export const fetchCheckpoints = (id: string) =>
+  api<{ checkpoints: Checkpoint[] }>(`/api/jobs/${id}/checkpoints`).then((r) => r.checkpoints);
+
+export const rollbackJob = (id: string, sha: string) =>
+  api<{ ok: boolean }>(`/api/jobs/${id}/rollback`, { method: "POST", body: JSON.stringify({ sha }) });
+
 // Terminal is now an interactive PTY over the /term WebSocket (see TerminalPanel).

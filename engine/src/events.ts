@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import type { Job, Project } from "./db";
 import { checkAuth } from "./auth";
 import { appendOutput } from "./output-log";
+import { appendChat } from "./chat-log";
 import { handleTerminalConnection } from "./terminal";
 
 // The live wire. The engine owns every write, so it broadcasts each change to all
@@ -67,6 +68,7 @@ export function emitOutput(jobId: string, chunk: string): void {
   broadcast({ type: "job.output", jobId, chunk });
 }
 export function emitChat(jobId: string, role: "assistant" | "user", text: string, images?: string[]): void {
+  appendChat(jobId, role, text, images); // durable, before broadcasting the live bubble
   broadcast({ type: "job.chat", jobId, role, text, images });
 }
 export function emitTerm(sessionId: string, text: string): void {

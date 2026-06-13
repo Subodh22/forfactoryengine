@@ -163,6 +163,83 @@ export function getChangedFiles(worktreePath: string): string[] {
   }
 }
 
+// ── File explorer ("All files" tab) ──────────────────────────────────────────
+const FILE_IGNORE = new Set([
+  "node_modules", ".git", ".next", "dist", "build", "coverage", ".worktrees",
+  ".turbo", "out", ".cache", "__pycache__", ".venv", "venv", ".idea", ".vscode",
+]);
+
+/** Recursively list relative file paths under a root, skipping heavy/ignored
+ *  dirs and capping the total so a huge repo can't blow the response. */
+export function listFilesIn(rootPath: string, max = 4000): { files: string[]; truncated: boolean } {
+  const root = resolveRepo(rootPath);
+  const out: string[] = [];
+  let truncated = false;
+  const walk = (dir: string) => {
+    if (out.length >= max) { truncated = true; return; }
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (out.length >= max) { truncated = true; return; }
+      if (e.name === ".git") continue;
+      if (e.isDirectory()) {
+        if (FILE_IGNORE.has(e.name)) continue;
+        walk(path.join(dir, e.name));
+      } else if (e.isFile()) {
+        out.push(path.relative(root, path.join(dir, e.name)));
+      }
+    }
+  };
+  walk(root);
+  return { files: out, truncated };
+}
+
+// ── Checkpoints ──────────────────────────────────────────────────────────────
+/**
+ * Snapshot the worktree's full state (tracked + untracked) as a dangling commit
+ * WITHOUT moving HEAD or the branch — so checkpoints never interfere with the
+ * branch/commit/push flow. Returns the snapshot commit sha, or null if nothing
+ * to snapshot.
+ */
+export function createCheckpoint(worktreePath: string, message: string): string | null {
+  if (!repoExists(worktreePath)) return null;
+  if (git(["add", "-A"], worktreePath).status !== 0) return null;
+  const tree = git(["write-tree"], worktreePath);
+  if (tree.status !== 0) return null;
+  const treeSha = tree.stdout.trim();
+  const head = git(["rev-parse", "HEAD"], worktreePath);
+  const parent = head.status === 0 ? ["-p", head.stdout.trim()] : [];
+  const commit = git(["commit-tree", treeSha, ...parent, "-m", message], worktreePath);
+  if (commit.status !== 0) return null;
+  return commit.stdout.trim();
+}
+
+/** Restore the worktree to a checkpoint snapshot (tracked files reset to it). */
+export function restoreCheckpoint(worktreePath: string, sha: string): boolean {
+  if (!repoExists(worktreePath)) return false;
+  return git(["read-tree", "-u", "--reset", sha], worktreePath).status === 0;
+}
+
+const MAX_FILE_BYTES = 200_000;
+
+/** Read a single file under `rootPath`, guarding against path traversal and
+ *  returning a binary flag instead of garbage for non-text files. */
+export function readFileIn(rootPath: string, relPath: string): { content: string; truncated: boolean; binary: boolean } | null {
+  const root = resolveRepo(rootPath);
+  const target = path.resolve(root, relPath);
+  if (target !== root && !target.startsWith(root + path.sep)) return null; // traversal guard
+  let buf: Buffer;
+  try {
+    if (!fs.statSync(target).isFile()) return null;
+    buf = fs.readFileSync(target);
+  } catch {
+    return null;
+  }
+  if (buf.subarray(0, 8192).includes(0)) return { content: "", truncated: false, binary: true };
+  const truncated = buf.length > MAX_FILE_BYTES;
+  return { content: buf.subarray(0, MAX_FILE_BYTES).toString("utf8"), truncated, binary: false };
+}
+
 /**
  * Commit all changes on the current worktree branch, then push them directly
  * to the repo's default branch — no PR needed.

@@ -10,9 +10,6 @@
     "dist": "npm run assemble && electron-builder",
     "dist:dir": "npm run assemble && electron-builder --dir"
   },
-  "dependencies": {
-    "@libsql/client": "^0.14.0"
-  },
   "devDependencies": {
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8"
@@ -20,9 +17,9 @@
   "build": {
     "appId": "com.factory.app",
     "productName": "Factory",
-    "files": ["main.js", "resources/**/*", "node_modules/**/*"],
-    "asarUnpack": ["**/*.node"],
-    "npmRebuild": true,
+    "files": ["main.js"],
+    "extraResources": [{ "from": "resources", "to": "resources" }],
+    "npmRebuild": false,
     "directories": { "output": "out" },
     "mac": { "category": "public.app-category.developer-tools", "target": ["dmg", "zip"] },
     "win": { "target": ["nsis"] },

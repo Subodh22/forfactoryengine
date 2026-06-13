@@ -28,16 +28,16 @@ export function PlanBoard({ epicId }: { epicId: string }) {
   ) as Record<string, Job[]>;
 
   return (
-    <div className="w-full border-4 border-ink bg-concrete overflow-hidden flex flex-col brutal-shadow min-h-[40vh]">
+    <div className="w-full border border-[#332f28] rounded-lg bg-concrete overflow-hidden flex flex-col brutal-shadow min-h-[40vh]">
       <div className="flex-1 flex overflow-x-auto">
         {COLUMNS.map((col, i) => {
           const colJobs = byStatus[col.key] ?? [];
           return (
             <div
               key={col.key}
-              className={`flex-shrink-0 w-[70vw] sm:flex-1 sm:w-auto sm:min-w-[160px] flex flex-col ${i < COLUMNS.length - 1 ? "border-r-4 border-ink" : ""}`}
+              className={`flex-shrink-0 w-[70vw] sm:flex-1 sm:w-auto sm:min-w-[160px] flex flex-col ${i < COLUMNS.length - 1 ? "border-r border-[#332f28]" : ""}`}
             >
-              <div className="flex items-center justify-between px-3 py-2.5 border-b-4 border-ink bg-ink text-concrete">
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#332f28] bg-concrete-2 text-ink">
                 <span className="font-display uppercase text-[11px] flex items-center gap-1.5">
                   <span className="w-2 h-2" style={{ backgroundColor: col.dot }} />
                   {col.label}
@@ -47,7 +47,7 @@ export function PlanBoard({ epicId }: { epicId: string }) {
               <ScrollArea className="flex-1">
                 <div className="flex flex-col gap-2 p-2">
                   {colJobs.map((job) => (
-                    <div key={job.id} className="border-2 border-ink bg-paper p-2 flex flex-col gap-1.5">
+                    <div key={job.id} className="border border-[#332f28] bg-paper p-2 flex flex-col gap-1.5">
                       <span className={`font-mono text-[12px] leading-snug ${job.status === "completed" ? "line-through text-muted" : "text-ink"}`}>
                         {job.title || "Untitled task"}
                       </span>
@@ -60,7 +60,7 @@ export function PlanBoard({ epicId }: { epicId: string }) {
                     </div>
                   ))}
                   {colJobs.length === 0 && (
-                    <div className="border-2 border-dashed border-ink/30 p-4 text-center font-data text-[9px] uppercase text-muted">
+                    <div className="border border-dashed border-[#332f28]/30 p-4 text-center font-data text-[9px] uppercase text-muted">
                       Empty
                     </div>
                   )}

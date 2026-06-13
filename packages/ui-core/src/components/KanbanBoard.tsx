@@ -43,16 +43,16 @@ export function KanbanBoard({ projectId, onSelectJob }: Props) {
   );
 
   return (
-    <div className="w-full h-full border-4 border-ink bg-concrete overflow-hidden flex flex-col brutal-shadow">
+    <div className="w-full h-full border border-[#332f28] rounded-lg bg-concrete overflow-hidden flex flex-col brutal-shadow">
       <div className="flex-1 flex overflow-x-auto">
         {COLUMNS.map((col, i) => {
           const colJobs = byStatus[col.key] ?? [];
           return (
             <div
               key={col.key}
-              className={`flex-shrink-0 w-[80vw] sm:flex-1 sm:w-auto sm:min-w-[180px] flex flex-col ${i < COLUMNS.length - 1 ? "border-r-4 border-ink" : ""}`}
+              className={`flex-shrink-0 w-[80vw] sm:flex-1 sm:w-auto sm:min-w-[180px] flex flex-col ${i < COLUMNS.length - 1 ? "border-r border-[#332f28]" : ""}`}
             >
-              <div className="flex items-center justify-between px-4 py-3.5 border-b-4 border-ink bg-ink text-concrete">
+              <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#332f28] bg-concrete-2 text-ink">
                 <span className="font-display uppercase text-[13px] flex items-center gap-2">
                   <span className="w-2 h-2" style={{ backgroundColor: col.dot }} />
                   {col.label}
@@ -65,7 +65,7 @@ export function KanbanBoard({ projectId, onSelectJob }: Props) {
                     <JobCard key={job.id} job={job} onSelect={onSelectJob} childProgress={childProgress.get(job.id)} />
                   ))}
                   {colJobs.length === 0 && (
-                    <div className="border-2 border-dashed border-ink/40 p-6 text-center font-data text-[10px] uppercase text-muted">
+                    <div className="border border-dashed border-[#332f28]/40 p-6 text-center font-data text-[10px] uppercase text-muted">
                       No {col.label.toLowerCase()} jobs
                     </div>
                   )}

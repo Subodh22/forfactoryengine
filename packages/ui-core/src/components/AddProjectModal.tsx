@@ -126,19 +126,19 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-ink/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-paper border-4 border-ink brutal-shadow w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b-4 border-ink bg-ink text-concrete">
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-paper border border-[#332f28] rounded-xl brutal-shadow w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-[#332f28] bg-concrete-2 text-ink">
           <h2 className="font-display uppercase text-[15px]">Add Project</h2>
-          <button onClick={onClose} className="text-concrete hover:opacity-60"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="text-ink hover:opacity-60"><X className="w-4 h-4" /></button>
         </div>
 
         <form onSubmit={submit} className="p-4 flex flex-col gap-3">
           <div className="flex gap-2">
-            <button type="button" onClick={() => setMode("existing")} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${mode === "existing" ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
+            <button type="button" onClick={() => setMode("existing")} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border border-[#332f28] transition-colors ${mode === "existing" ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
               <FolderDown className="w-3 h-3" /> Existing Repo
             </button>
-            <button type="button" onClick={() => setMode("new")} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${mode === "new" ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
+            <button type="button" onClick={() => setMode("new")} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border border-[#332f28] transition-colors ${mode === "new" ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}>
               <Plus className="w-3 h-3" /> Create New
             </button>
           </div>
@@ -153,11 +153,11 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
               <div>
                 <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Visibility</label>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setIsPrivate(true)} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}><Lock className="w-3 h-3" /> Private</button>
-                  <button type="button" onClick={() => setIsPrivate(false)} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border-2 border-ink transition-colors ${!isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}><Globe className="w-3 h-3" /> Public</button>
+                  <button type="button" onClick={() => setIsPrivate(true)} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border border-[#332f28] transition-colors ${isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}><Lock className="w-3 h-3" /> Private</button>
+                  <button type="button" onClick={() => setIsPrivate(false)} className={`flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase border border-[#332f28] transition-colors ${!isPrivate ? "bg-ink text-concrete" : "bg-concrete text-ink hover:bg-concrete-2"}`}><Globe className="w-3 h-3" /> Public</button>
                 </div>
               </div>
-              {!connected && <p className="font-data text-[11px] uppercase text-ink bg-[#b8860b]/20 border-2 border-ink px-3 py-2">Connect GitHub (top right) to create repos.</p>}
+              {!connected && <p className="font-data text-[11px] uppercase text-ink bg-[#b8860b]/20 border border-[#332f28] px-3 py-2">Connect GitHub (top right) to create repos.</p>}
             </>
           ) : (
             <>
@@ -173,7 +173,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                 </div>
                 {connected ? (
                   <>
-                    <button type="button" onClick={() => ghRepos.length && setShowDropdown((v) => !v)} className="w-full flex items-center justify-between px-3 py-2 bg-paper border-2 border-ink text-sm text-left transition-colors hover:bg-concrete-2">
+                    <button type="button" onClick={() => ghRepos.length && setShowDropdown((v) => !v)} className="w-full flex items-center justify-between px-3 py-2 bg-paper border border-[#332f28] text-sm text-left transition-colors hover:bg-concrete-2">
                       {loadingRepos ? (
                         <span className="flex items-center gap-2 text-zinc-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading your repos…</span>
                       ) : selectedRepo ? (
@@ -184,9 +184,9 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                       <ChevronDown className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
                     </button>
                     {showDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-paper border-2 border-ink brutal-shadow-sm z-10 overflow-hidden">
-                        <div className="p-2 border-b-2 border-ink">
-                          <div className="flex items-center gap-2 px-2 py-1 bg-concrete border-2 border-ink">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-paper border border-[#332f28] brutal-shadow-sm z-10 overflow-hidden">
+                        <div className="p-2 border-b border-[#332f28]">
+                          <div className="flex items-center gap-2 px-2 py-1 bg-concrete border border-[#332f28]">
                             <Search className="w-3 h-3 text-muted shrink-0" />
                             <input autoFocus value={repoSearch} onChange={(e) => setRepoSearch(e.target.value)} placeholder="Filter repos…" className="flex-1 bg-transparent text-xs text-ink font-mono outline-none placeholder:text-muted" />
                           </div>
@@ -196,7 +196,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
                             <p className="text-xs text-muted p-3 text-center font-data uppercase">No repos found</p>
                           ) : (
                             filteredRepos.map((r) => (
-                              <button key={r.fullName} type="button" onClick={() => selectRepo(r)} className="w-full text-left px-3 py-2 border-b border-ink/20 hover:bg-concrete-2 transition-colors">
+                              <button key={r.fullName} type="button" onClick={() => selectRepo(r)} className="w-full text-left px-3 py-2 border-b border-[#332f28]/20 hover:bg-concrete-2 transition-colors">
                                 <div className="flex items-center gap-2">
                                   {r.private && <Lock className="w-3 h-3 text-zinc-500 shrink-0" />}
                                   <span className="text-xs text-zinc-100">{r.fullName}</span>
@@ -251,7 +251,7 @@ export function AddProjectModal({ onClose }: { onClose: () => void }) {
             <label className="font-data text-[10px] text-muted uppercase tracking-widest mb-1 block">Color</label>
             <div className="flex gap-2">
               {COLORS.map((c) => (
-                <button key={c} type="button" onClick={() => setForm({ ...form, color: c })} className="w-6 h-6 border-2 border-ink transition-all" style={{ backgroundColor: c, outline: form.color === c ? "2px solid var(--ink)" : "none", outlineOffset: "2px" }} />
+                <button key={c} type="button" onClick={() => setForm({ ...form, color: c })} className="w-6 h-6 border border-[#332f28] transition-all" style={{ backgroundColor: c, outline: form.color === c ? "2px solid var(--ink)" : "none", outlineOffset: "2px" }} />
               ))}
             </div>
           </div>

@@ -106,12 +106,12 @@ export function CommandPalette({ projects, jobs, onSelectProject, onSelectJob, o
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh]" onClick={() => setOpen(false)}>
-      <div className="absolute inset-0 bg-ink/40" />
+      <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-[560px] max-w-[92vw] bg-concrete border-4 border-ink shadow-[8px_8px_0_var(--ink)] flex flex-col max-h-[60vh]"
+        className="relative w-[560px] max-w-[92vw] bg-concrete border border-[#332f28] brutal-shadow flex flex-col max-h-[60vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 px-3 border-b-4 border-ink bg-paper">
+        <div className="flex items-center gap-2 px-3 border-b border-[#332f28] bg-paper">
           <Search className="w-4 h-4 text-muted flex-shrink-0" />
           <input
             ref={inputRef}
@@ -132,14 +132,14 @@ export function CommandPalette({ projects, jobs, onSelectProject, onSelectJob, o
               key={item.id}
               onClick={item.run}
               onMouseEnter={() => setIndex(i)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b-2 border-ink/10 transition-colors ${i === index ? "bg-ink text-concrete" : "bg-concrete text-ink"}`}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-[#332f28]/10 transition-colors ${i === index ? "bg-ink text-concrete" : "bg-concrete text-ink"}`}
             >
               <span className="font-mono text-xs truncate flex-1">{item.label}</span>
               <span className={`font-data text-[10px] uppercase flex-shrink-0 ${i === index ? "text-concrete/70" : "text-muted"}`}>{item.hint}</span>
             </button>
           ))}
         </div>
-        <div className="px-3 py-1.5 border-t-2 border-ink/20 font-data text-[10px] uppercase text-muted flex gap-3">
+        <div className="px-3 py-1.5 border-t border-[#332f28]/20 font-data text-[10px] uppercase text-muted flex gap-3">
           <span>↑↓ navigate</span><span>↵ open</span><span>⌘K toggle</span>
         </div>
       </div>

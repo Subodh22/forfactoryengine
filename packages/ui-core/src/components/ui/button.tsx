@@ -9,10 +9,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-ink text-concrete border-2 border-ink hover:bg-concrete hover:text-ink",
-        destructive: "bg-destructive text-destructive-foreground border-2 border-ink hover:opacity-90",
-        outline: "border-2 border-ink bg-concrete text-ink hover:bg-ink hover:text-concrete",
-        secondary: "bg-concrete-2 text-ink border-2 border-ink hover:bg-ink hover:text-concrete",
+        default: "bg-ink text-concrete border border-[#332f28] hover:bg-concrete hover:text-ink",
+        destructive: "bg-destructive text-destructive-foreground border border-[#332f28] hover:opacity-90",
+        outline: "border border-[#332f28] bg-concrete text-ink hover:bg-ink hover:text-concrete",
+        secondary: "bg-concrete-2 text-ink border border-[#332f28] hover:bg-ink hover:text-concrete",
         ghost: "hover:bg-concrete-2 hover:text-ink",
         link: "text-ink underline-offset-4 hover:underline",
       },

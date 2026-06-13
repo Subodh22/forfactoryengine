@@ -94,7 +94,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
 
   return (
     <div ref={dropRef} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-      <div className="flex gap-0 mb-3 border-2 border-ink w-max">
+      <div className="flex gap-0 mb-3 border border-[#332f28] w-max">
         <button
           onClick={() => setMode("describe")}
           className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 transition-colors ${mode === "describe" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
@@ -103,7 +103,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
         </button>
         <button
           onClick={() => setMode("plan")}
-          className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 transition-colors border-l-2 border-ink ${mode === "plan" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
+          className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 transition-colors border-l border-[#332f28] ${mode === "plan" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
         >
           <ListTree className="w-3 h-3" /> Plan myself
         </button>
@@ -112,12 +112,12 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
       {mode === "plan" ? (
         <PlanBuilder projectId={projectId} />
       ) : (
-      <div className="bg-paper border-4 border-ink brutal-shadow grid-bg">
-        <div className="flex justify-between items-center px-5 py-4 border-b-4 border-ink bg-paper">
+      <div className="bg-paper border border-[#332f28] brutal-shadow grid-bg">
+        <div className="flex justify-between items-center px-5 py-4 border-b border-[#332f28] bg-paper">
           <b className="font-display uppercase text-[15px]">New Job — {project?.name ?? "…"}</b>
           <div className="flex items-center gap-2">
             <button
-              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${delegate ? "bg-ink text-paper" : "bg-paper text-ink border border-ink"}`}
+              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${delegate ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"}`}
               onClick={() => setDelegate((v) => !v)}
               title="Delegate: plan the task and split it into parallel sub-agents, merged into one PR"
             >
@@ -125,7 +125,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
               Delegate {delegate ? "on" : "off"}
             </button>
             <button
-              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${autoRun ? "bg-ink text-paper" : "bg-paper text-ink border border-ink"} ${delegate ? "opacity-40 pointer-events-none" : ""}`}
+              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${autoRun ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"} ${delegate ? "opacity-40 pointer-events-none" : ""}`}
               onClick={() => setAutoRun((v) => !v)}
               title="Auto-run: start executing immediately after creating"
             >
@@ -135,10 +135,10 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 px-5 py-3 border-b-4 border-ink bg-paper">
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-[#332f28] bg-paper">
           <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
             Model
-            <select value={model} onChange={(e) => setModel(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border-2 border-ink px-2 py-1 focus:outline-none cursor-pointer">
+            <select value={model} onChange={(e) => setModel(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
               <option value="">Default</option>
               <option value="opus">Opus</option>
               <option value="sonnet">Sonnet</option>
@@ -147,7 +147,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
           </label>
           <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
             Effort
-            <select value={effort} onChange={(e) => setEffort(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border-2 border-ink px-2 py-1 focus:outline-none cursor-pointer">
+            <select value={effort} onChange={(e) => setEffort(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
               <option value="">Default</option>
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -169,17 +169,17 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             placeholder="Describe what you want to build or change…  (paste or drop files, Cmd+Enter to send)"
-            className="w-full min-h-[150px] resize-y border-[3px] border-ink bg-concrete p-3.5 font-mono text-[13px] text-ink leading-[1.5] placeholder:text-muted focus:outline-none focus:bg-[#dfdcd4] focus:shadow-[inset_0_0_0_3px_var(--ink)] transition-shadow"
+            className="w-full min-h-[150px] resize-y border border-[#332f28] bg-concrete p-3.5 font-mono text-[13px] text-ink leading-[1.5] placeholder:text-muted focus:outline-none focus:bg-[#dfdcd4] focus:shadow-[inset_0_0_0_3px_var(--ink)] transition-shadow"
           />
         </div>
 
-        <div className="flex justify-between items-center px-5 py-4 border-t-4 border-ink bg-paper">
+        <div className="flex justify-between items-center px-5 py-4 border-t border-[#332f28] bg-paper">
           <div className="flex items-center gap-3">
-            <button className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b-2 border-ink pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors" onClick={() => fileRef.current?.click()}>
+            <button className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b border-[#332f28] pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors" onClick={() => fileRef.current?.click()}>
               <Paperclip className="w-3.5 h-3.5" />Attach files
             </button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
-            <button className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b-2 border-ink pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors" onClick={captureScreen}>
+            <button className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b border-[#332f28] pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors" onClick={captureScreen}>
               <Monitor className="w-3.5 h-3.5" />Screenshot
             </button>
           </div>

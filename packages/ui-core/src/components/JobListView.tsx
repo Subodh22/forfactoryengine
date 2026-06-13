@@ -173,13 +173,13 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
   };
 
   return (
-    <div className="w-full border-4 border-ink bg-paper brutal-shadow">
+    <div className="w-full border border-[#332f28] bg-paper brutal-shadow">
       {GROUPS.map((g) => {
         const rows = topLevel.filter((j) => inGroup(j, g.key));
         const isOpen = !collapsed.has(g.key);
         if (rows.length === 0 && g.key !== "pending") return null;
         return (
-          <div key={g.key} className="border-b-2 border-ink/15 last:border-b-0">
+          <div key={g.key} className="border-b border-[#332f28]/15 last:border-b-0">
             <button
               onClick={() => toggleGroup(g.key)}
               className="w-full flex items-center gap-2 px-4 py-2.5 bg-concrete hover:bg-concrete/70 transition-colors"
@@ -344,12 +344,12 @@ function JobRow({ job, depth, ctx }: { job: Job; depth: number; ctx: RowCtx }) {
 function StatusCircle({ job, isHuman, isDone, onClick }: { job: Job; isHuman: boolean; isDone: boolean; onClick: () => void }) {
   const running = job.status === "running" || job.status === "queued" || job.status === "delegating";
   const failed = job.status === "failed";
-  const base = "flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors";
+  const base = "flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center transition-colors";
   let inner: React.ReactNode = null;
-  let cls = "border-ink bg-paper hover:bg-concrete";
+  let cls = "border-[#332f28] bg-paper hover:bg-concrete";
   let title = isHuman ? "Mark done" : "Run task";
-  if (isDone) { cls = "border-ink bg-ink text-paper"; inner = <Check className="w-3 h-3" />; title = "Done — click to reopen"; }
-  else if (running) { cls = "border-ink bg-paper text-ink"; inner = <Loader2 className="w-3 h-3 animate-spin" />; title = "Running…"; }
+  if (isDone) { cls = "border-[#332f28] bg-ink text-paper"; inner = <Check className="w-3 h-3" />; title = "Done — click to reopen"; }
+  else if (running) { cls = "border-[#332f28] bg-paper text-ink"; inner = <Loader2 className="w-3 h-3 animate-spin" />; title = "Running…"; }
   else if (failed) { cls = "border-[#d6210f] bg-paper text-[#d6210f]"; inner = <RotateCcw className="w-3 h-3" />; title = "Failed — click to retry"; }
   else if (!isHuman) { inner = <Play className="w-2.5 h-2.5 text-muted" />; }
   return <button onClick={onClick} title={title} className={`${base} ${cls}`}>{inner}</button>;

@@ -31,6 +31,8 @@ export interface Project {
   agentRules: string;
   color: string;
   sessionPrefix: string;
+  setupScript: string;
+  runScript: string;
   createdAt: number;
 }
 
@@ -141,6 +143,8 @@ export async function initSchema(): Promise<void> {
   const projectCols: [string, string][] = [
     ["color", "TEXT NOT NULL DEFAULT ''"],
     ["session_prefix", "TEXT NOT NULL DEFAULT ''"],
+    ["setup_script", "TEXT NOT NULL DEFAULT ''"],
+    ["run_script", "TEXT NOT NULL DEFAULT ''"],
   ];
   for (const [col, def] of projectCols) {
     try { await db.execute(`ALTER TABLE projects ADD COLUMN ${col} ${def}`); } catch { /* exists */ }
@@ -186,6 +190,44 @@ export async function initSchema(): Promise<void> {
       value TEXT NOT NULL DEFAULT ''
     )
   `);
+
+  // Per-turn worktree snapshots so a job can be rewound to an earlier turn.
+  // `sha` is a dangling commit-tree object (HEAD is never moved), so checkpoints
+  // never interfere with the branch/commit/push flow.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS job_checkpoints (
+      id         TEXT PRIMARY KEY,
+      job_id     TEXT NOT NULL,
+      turn       INTEGER NOT NULL DEFAULT 0,
+      sha        TEXT NOT NULL,
+      label      TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    )
+  `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS checkpoints_by_job ON job_checkpoints (job_id, turn)`);
+}
+
+// ── Checkpoints ─────────────────────────────────────────────────────────────
+
+export interface Checkpoint { id: string; jobId: string; turn: number; sha: string; label: string; createdAt: number; }
+
+export async function addCheckpoint(jobId: string, sha: string, label: string): Promise<Checkpoint> {
+  const res = await db.execute({ sql: "SELECT COUNT(*) AS n FROM job_checkpoints WHERE job_id = ?", args: [jobId] });
+  const turn = Number(res.rows[0]?.n ?? 0) + 1;
+  const cp: Checkpoint = { id: crypto.randomUUID(), jobId, turn, sha, label: label.slice(0, 200), createdAt: Date.now() };
+  await db.execute({
+    sql: "INSERT INTO job_checkpoints (id, job_id, turn, sha, label, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    args: [cp.id, cp.jobId, cp.turn, cp.sha, cp.label, cp.createdAt],
+  });
+  return cp;
+}
+
+export async function listCheckpoints(jobId: string): Promise<Checkpoint[]> {
+  const res = await db.execute({ sql: "SELECT * FROM job_checkpoints WHERE job_id = ? ORDER BY turn ASC", args: [jobId] });
+  return res.rows.map((r) => ({
+    id: String(r.id), jobId: String(r.job_id), turn: Number(r.turn),
+    sha: String(r.sha), label: String(r.label ?? ""), createdAt: Number(r.created_at),
+  }));
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────
@@ -226,6 +268,8 @@ function rowToProject(r: Row): Project {
     agentRules: String(r.agent_rules),
     color: String(r.color ?? ""),
     sessionPrefix: String(r.session_prefix ?? ""),
+    setupScript: String(r.setup_script ?? ""),
+    runScript: String(r.run_script ?? ""),
     createdAt: Number(r.created_at),
   };
 }
@@ -254,6 +298,8 @@ export async function createProject(input: {
     agentRules: input.agentRules ?? "",
     color: input.color ?? "",
     sessionPrefix: input.sessionPrefix ?? "",
+    setupScript: "",
+    runScript: "",
     createdAt: Date.now(),
   };
   await db.execute({
@@ -267,11 +313,12 @@ export async function createProject(input: {
 const PROJECT_COLUMNS: Record<string, string> = {
   name: "name", localPath: "local_path", repo: "repo", defaultBranch: "default_branch",
   githubToken: "github_token", agentRules: "agent_rules", color: "color", sessionPrefix: "session_prefix",
+  setupScript: "setup_script", runScript: "run_script",
 };
 
 export async function updateProject(
   id: string,
-  fields: Partial<Pick<Project, "name" | "localPath" | "repo" | "defaultBranch" | "githubToken" | "agentRules" | "color" | "sessionPrefix">>,
+  fields: Partial<Pick<Project, "name" | "localPath" | "repo" | "defaultBranch" | "githubToken" | "agentRules" | "color" | "sessionPrefix" | "setupScript" | "runScript">>,
 ): Promise<void> {
   const sets: string[] = [];
   const args: (string | number)[] = [];

@@ -19,4 +19,13 @@ mkdirSync(path.join(RES, "engine"), { recursive: true });
 cpSync(engineBundle, path.join(RES, "engine", "factory.mjs"));
 cpSync(uiDist, path.join(RES, "ui"), { recursive: true });
 
-console.log("✓ assembled desktop/resources (engine + ui)");
+// The engine bundle keeps native deps (@libsql/client, libsql, node-pty) EXTERNAL
+// — they load .node binaries that can't be inlined. Ship the engine's node_modules
+// next to the bundle so `require()` resolves them (and their transitive deps:
+// @neon-rs, detect-libc, the @libsql/<platform> binary, …) at runtime. ~90MB; the
+// build-only tooling (esbuild/tsx) is dead weight but harmless for a local app.
+const engineNodeModules = path.join(ROOT, "engine", "node_modules");
+if (!existsSync(engineNodeModules)) throw new Error("engine node_modules missing — run `npm install` in engine/");
+cpSync(engineNodeModules, path.join(RES, "engine", "node_modules"), { recursive: true });
+
+console.log("✓ assembled desktop/resources (engine + ui + native deps)");

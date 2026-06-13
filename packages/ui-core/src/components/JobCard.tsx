@@ -39,14 +39,14 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
   return (
     <>
       <div
-        className="bg-paper border-[3px] border-ink p-3 cursor-pointer brutal-shadow-sm hover:-translate-x-px hover:-translate-y-px hover:shadow-[6px_6px_0_var(--ink)] transition-all group"
+        className="bg-paper border border-[#332f28] p-3 cursor-pointer brutal-shadow-sm hover:-translate-x-px hover:-translate-y-px hover:brutal-shadow-sm transition-all group"
         onClick={() => onSelect?.(job.id)}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
           <h5 className="text-[13px] font-bold uppercase text-ink leading-[1.25] flex-1">{job.title}</h5>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {job.kind === "epic" && (
-              <span className="font-data text-[9px] uppercase border border-ink px-1 bg-[#e0a32e]/25 text-ink">
+              <span className="font-data text-[9px] uppercase border border-[#332f28] px-1 bg-[#e0a32e]/25 text-ink">
                 Epic{childProgress ? ` ${childProgress.done}/${childProgress.total}` : ""}
               </span>
             )}
@@ -65,7 +65,7 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
         {job.images.length > 0 && (
           <div className="flex gap-1 mb-3 flex-wrap">
             {job.images.slice(0, 3).map((img, i) => (
-              <img key={i} src={img} alt="" className="w-10 h-10 object-cover border-2 border-ink" />
+              <img key={i} src={img} alt="" className="w-10 h-10 object-cover border border-[#332f28]" />
             ))}
           </div>
         )}
@@ -94,7 +94,7 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
             )}
             {job.status === "pending" && (
               <button
-                className="flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase bg-ink text-concrete border-2 border-ink hover:bg-concrete hover:text-ink transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase bg-ink text-concrete border border-[#332f28] hover:bg-concrete hover:text-ink transition-colors"
                 onClick={(e) => { e.stopPropagation(); handleRun(); }}
               >
                 <Play className="w-2.5 h-2.5" /> Run
@@ -102,7 +102,7 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
             )}
             {(job.status === "cancelled" || job.status === "failed") && (
               <button
-                className="flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase border-2 border-ink text-ink hover:bg-ink hover:text-concrete transition-colors opacity-0 group-hover:opacity-100"
+                className="flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors opacity-0 group-hover:opacity-100"
                 onClick={openRedo}
               >
                 <RotateCcw className="w-2.5 h-2.5" /> Redo
@@ -122,17 +122,17 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
       </div>
 
       {showRedoDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40" onClick={() => setShowRedoDialog(false)}>
-          <div className="bg-paper border-4 border-ink brutal-shadow p-5 w-[480px] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-display uppercase text-[15px] text-ink mb-4 pb-3 border-b-4 border-ink">Re-run job</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowRedoDialog(false)}>
+          <div className="bg-paper border border-[#332f28] brutal-shadow p-5 w-[480px] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display uppercase text-[15px] text-ink mb-4 pb-3 border-b border-[#332f28]">Re-run job</h3>
             <div className="mb-3">
               <p className="font-data text-[10px] uppercase text-muted mb-1.5">Original prompt</p>
-              <div className="text-xs text-ink bg-concrete border-2 border-ink p-2.5 max-h-28 overflow-y-auto font-mono whitespace-pre-wrap">{job.prompt}</div>
+              <div className="text-xs text-ink bg-concrete border border-[#332f28] p-2.5 max-h-28 overflow-y-auto font-mono whitespace-pre-wrap">{job.prompt}</div>
             </div>
             <div className="mb-5">
               <p className="font-data text-[10px] uppercase text-muted mb-1.5">Additional instructions <span className="opacity-60">(optional)</span></p>
               <textarea
-                className="w-full bg-concrete border-2 border-ink p-2.5 text-xs text-ink font-mono resize-none focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow"
+                className="w-full bg-concrete border border-[#332f28] p-2.5 text-xs text-ink font-mono resize-none focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] transition-shadow"
                 rows={3}
                 placeholder="Add more context or updated instructions…"
                 value={additionalPrompt}
@@ -144,7 +144,7 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
             </div>
             <div className="flex justify-end gap-2">
               <button className="px-3 py-1.5 font-data text-[11px] uppercase text-muted hover:text-ink transition-colors" onClick={() => setShowRedoDialog(false)}>Cancel</button>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase bg-ink text-concrete border-2 border-ink brutal-press" onClick={handleRedo}>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 font-data text-[11px] uppercase bg-ink text-concrete border border-[#332f28] brutal-press" onClick={handleRedo}>
                 <RotateCcw className="w-3 h-3" /> Re-run
               </button>
             </div>

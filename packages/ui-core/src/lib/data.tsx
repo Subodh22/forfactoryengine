@@ -227,15 +227,29 @@ export function useJobOutput(jobId: string, live: boolean): string {
   return output;
 }
 
-/** Live chat-bubble thread for a job (ephemeral; resets when switching jobs). */
+interface ChatEntry { role: "assistant" | "user"; text: string; images?: string[]; ts: number }
+
+/** A job's chat thread. The persisted turns are fetched on open (so finished
+ *  jobs and reloads replay the whole conversation), then live bubbles are tailed
+ *  while the job is active. Subscribing only after the backfill resolves avoids
+ *  duplicating turns already in the persisted log. */
 export function useJobChat(jobId: string, active: boolean): [ChatMsg[], (m: ChatMsg) => void] {
-  const { onChat } = useFactory();
+  const { onChat, wsEpoch } = useFactory();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
-  useEffect(() => { setMessages([]); }, [jobId]);
   useEffect(() => {
-    if (!active) return;
-    return onChat(jobId, (msg) => setMessages((m) => [...m, msg]));
-  }, [jobId, active, onChat]);
+    let cancelled = false;
+    let off: (() => void) | undefined;
+    const tail = () => { off = onChat(jobId, (msg) => setMessages((m) => [...m, msg])); };
+    setMessages([]);
+    api<{ messages: ChatEntry[] }>(`/api/jobs/${jobId}/chat`)
+      .then((r) => {
+        if (cancelled) return;
+        setMessages(r.messages.map((e, i) => ({ id: `hist-${i}-${e.ts}`, role: e.role, text: e.text, images: e.images })));
+        if (active) tail();
+      })
+      .catch(() => { if (!cancelled && active) tail(); });
+    return () => { cancelled = true; off?.(); };
+  }, [jobId, active, onChat, wsEpoch]);
   return [messages, (m) => setMessages((prev) => [...prev, m])];
 }
 

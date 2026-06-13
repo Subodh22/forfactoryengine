@@ -20,6 +20,8 @@ export interface Project {
   agentRules: string;
   color: string;
   sessionPrefix: string;
+  setupScript: string;   // runs once when a job's worktree is created
+  runScript: string;     // launchable dev/run command (Run terminal preset)
   createdAt: number;
 }
 

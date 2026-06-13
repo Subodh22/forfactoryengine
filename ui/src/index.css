@@ -2,20 +2,21 @@
 /* Components live outside this app's root — tell Tailwind to scan them too. */
 @source "../../packages/ui-core/src";
 
-/* ───────────────────────── Grid-Cast: concrete brutalist theme ─────────────────────────
-   A light, high-contrast "concrete grid" reskin: a poured-concrete surface ruled
-   with a faint grid, hard ink borders, offset drop shadows, and an industrial type
-   stack (Archivo / Archivo Black / Space Mono / JetBrains Mono). The accent is
-   ink — black fills mark anything "active". The cohesion trick: we remap Tailwind's
-   `zinc` and `indigo` scales (INVERTED) so utility classes pick up the theme. */
+/* ───────────────────────── Conductor dark theme ─────────────────────────
+   A warm near-black surface, thin subtle borders, rounded corners, soft
+   shadows — modeled on Conductor (conductor.build). The old brutalist theme
+   was a 2-colour swap system (ink=dark, concrete=light, used interchangeably
+   as fg/bg). Going dark is a STRAIGHT SWAP: ink→light, concrete→dark, so every
+   `bg-ink text-concrete` pairing stays correct automatically. Tailwind's zinc
+   ramp is now a natural dark ramp; indigo is repurposed as a warm accent. */
 
 :root {
-  --concrete: #cfccc4;
-  --concrete-2: #c4c0b7;
-  --grid: #bcb8af;
-  --ink: #111111;
-  --paper: #ffffff;
-  --muted: #6b675f;
+  --concrete: #1a1714;     /* dominant surface (chrome) */
+  --concrete-2: #232019;   /* raised / hover surface */
+  --grid: transparent;     /* grid background removed */
+  --ink: #e9e4db;          /* light foreground: body text + active-chip fills */
+  --paper: #201d18;        /* inputs / cards / popovers (slightly raised) */
+  --muted: #9a9388;        /* secondary text */
 
   --background: var(--concrete);
   --foreground: var(--ink);
@@ -31,19 +32,23 @@
   --muted-foreground: var(--muted);
   --accent: var(--ink);
   --accent-foreground: var(--concrete);
-  --destructive: #d6210f;
+  --destructive: #e5392a;
   --destructive-foreground: #ffffff;
-  --border: var(--ink);
-  --input: var(--ink);
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border: var(--border-subtle);
+  --input: var(--border-subtle);
   --ring: var(--ink);
-  --radius: 0rem;
+  --radius: 0.625rem;
 
-  --pending: #6b675f;
-  --queued: #b8860b;
-  --running: #1f7a3d;
-  --completed: #1f7a3d;
-  --failed: #d6210f;
-  --cancelled: #6b675f;
+  /* Deep surface for terminal / output / diff panes (darker than chrome). */
+  --surface-deep: #14110e;
+
+  --pending: #9a9388;
+  --queued: #e0a82e;
+  --running: #4ade80;
+  --completed: #4ade80;
+  --failed: #f4604f;
+  --cancelled: #9a9388;
 
   /* Industrial type stack — loaded via Google Fonts in index.html. */
   --font-archivo: "Archivo", system-ui, sans-serif;
@@ -65,6 +70,7 @@
   --color-concrete: var(--concrete);
   --color-concrete-2: var(--concrete-2);
   --color-paper: var(--paper);
+  --color-surface-deep: var(--surface-deep);
   --color-destructive: var(--destructive);
   --font-sans: var(--font-archivo);
   --font-mono: var(--font-jetbrains);
@@ -72,74 +78,70 @@
   --font-data: var(--font-space-mono);
 }
 
-/* Inverted neutral ramp — low numbers ink, high numbers paper. */
+/* Natural dark ramp — low = light, high = dark (Tailwind's normal direction). */
 @theme {
-  --color-zinc-50:  #15120f;
-  --color-zinc-100: #15120f;
-  --color-zinc-200: #2a2722;
-  --color-zinc-300: #3c3933;
-  --color-zinc-400: #56524b;
-  --color-zinc-500: #6b675f;
-  --color-zinc-600: #837e75;
-  --color-zinc-700: #a39e94;
-  --color-zinc-800: #c4c0b7;
-  --color-zinc-900: #ffffff;
-  --color-zinc-950: #f4f2ec;
+  --color-zinc-50:  #faf9f7;
+  --color-zinc-100: #ece7de;
+  --color-zinc-200: #d6d0c4;
+  --color-zinc-300: #b8b1a3;
+  --color-zinc-400: #9a9388;
+  --color-zinc-500: #837d72;
+  --color-zinc-600: #6b6559;
+  --color-zinc-700: #4a453d;
+  --color-zinc-800: #2f2b25;
+  --color-zinc-900: #201d18;
+  --color-zinc-950: #14110e;
 
-  --color-indigo-300: #56524b;
-  --color-indigo-400: #2a2722;
-  --color-indigo-500: #111111;
-  --color-indigo-600: #111111;
-  --color-indigo-700: #000000;
-  --color-indigo-800: #000000;
-  --color-indigo-900: #c4c0b7;
-  --color-indigo-950: #e7e4dc;
+  /* indigo → warm gold accent */
+  --color-indigo-300: #e8c97a;
+  --color-indigo-400: #e0bd63;
+  --color-indigo-500: #d8b25e;
+  --color-indigo-600: #c79f4f;
+  --color-indigo-700: #b08a3e;
+  --color-indigo-800: #2f2b25;
+  --color-indigo-900: #201d18;
+  --color-indigo-950: #14110e;
 }
 
 * {
-  border-color: var(--ink);
+  border-color: var(--border-subtle);
   box-sizing: border-box;
 }
 
 html, body, #root { height: 100%; }
 
 body {
-  background: var(--concrete);
+  background: #1a1714;
   color: var(--ink);
   font-family: var(--font-archivo), "Archivo", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 26px 26px;
 }
 
 ::selection { background: var(--ink); color: var(--concrete); }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--concrete); }
-::-webkit-scrollbar-thumb:hover { background: #000; }
+::-webkit-scrollbar-thumb { background: #3a352d; border: 2px solid #1a1714; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #4a443a; }
 
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
-/* ───────── Brutalist helpers ───────── */
+/* ───────── helpers ───────── */
 .font-display { font-family: var(--font-archivo-black); }
 .font-data { font-family: var(--font-space-mono); }
 .font-mono { font-family: var(--font-jetbrains); }
 
-.grid-bg {
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 26px 26px;
-}
+/* Conductor is normal-case; neutralize the brutalist all-caps everywhere. */
+.uppercase { text-transform: none !important; }
 
-.brutal-shadow { box-shadow: 9px 9px 0 var(--ink); }
-.brutal-shadow-sm { box-shadow: 5px 5px 0 var(--ink); }
-.brutal-shadow-muted { box-shadow: 9px 9px 0 var(--muted); }
+.grid-bg { background: transparent; }
 
-.brutal-press { transition: transform .1s ease, box-shadow .1s ease; }
-.brutal-press:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--muted); }
-.brutal-press:active { transform: translate(2px, 2px); box-shadow: none; }
+/* Brutalist offset shadows → soft dark-mode shadows (classes used in 22 files). */
+.brutal-shadow { box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
+.brutal-shadow-sm { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); }
+.brutal-shadow-muted { box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }
+
+.brutal-press { transition: transform .08s ease, background-color .12s ease, box-shadow .12s ease; }
+.brutal-press:hover { transform: translateY(-1px); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
+.brutal-press:active { transform: translateY(0); box-shadow: none; }
