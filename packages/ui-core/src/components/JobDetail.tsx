@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Monitor, ChevronDown, ChevronUp, Square, UploadCloud } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Monitor, ChevronDown, ChevronUp, Square, UploadCloud, Play } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DelegatorPanel } from "./DelegatorPanel";
@@ -11,7 +11,7 @@ import { MentionInput } from "./MentionInput";
 import { Markdown } from "./Markdown";
 import { CheckpointsBar } from "./CheckpointsBar";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -391,7 +391,22 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
                 <p className="text-[13px] text-ink/70">{isRunning || isDelegating ? "Claude is working…" : "No messages yet"}</p>
-                <p className="font-data text-[11px] text-muted">{isPending ? "This workspace hasn't started — Run it from the board." : "Replies and Claude's responses appear here."}</p>
+                <p className="font-data text-[11px] text-muted">{isPending ? "This workspace hasn't started yet." : "Replies and Claude's responses appear here."}</p>
+                {isPending && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await queueJob(jobId);
+                        toast.success("Job queued");
+                      } catch (err) {
+                        toast.error(String(err instanceof Error ? err.message : err) || "Failed to start");
+                      }
+                    }}
+                    className="mt-2 flex items-center gap-1.5 px-4 py-2 bg-[#b08a3e] text-[#14110e] font-bold font-data text-[11px] uppercase hover:brightness-110 transition-all brutal-press"
+                  >
+                    <Play className="w-3.5 h-3.5" />Run
+                  </button>
+                )}
               </div>
             )}
             <div ref={bottomRef} />
