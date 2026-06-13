@@ -130,7 +130,7 @@ function ProjectTree({
               <div
                 key={ws.id}
                 className={`group/ws flex items-center rounded-md transition-colors w-full min-w-0 ${
-                  isSel ? "bg-concrete-2 text-ink" : "text-ink/70 hover:bg-concrete-2/50 hover:text-ink"
+                  isSel ? "bg-concrete-2 text-ink" : "text-ink/90 hover:bg-concrete-2/50 hover:text-ink"
                 }`}
               >
                 <button
