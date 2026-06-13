@@ -124,7 +124,7 @@ function ProjectTree({
                 onClick={() => onSelectJob(ws.id)}
                 title={ws.title}
                 className={`flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-md text-left transition-colors ${
-                  isSel ? "bg-concrete-2 text-ink" : "text-muted hover:bg-concrete-2/50 hover:text-ink"
+                  isSel ? "bg-concrete-2 text-ink" : "text-ink/70 hover:bg-concrete-2/50 hover:text-ink"
                 }`}
               >
                 <span
