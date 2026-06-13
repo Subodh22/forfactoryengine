@@ -12,6 +12,7 @@ import { AgentsGrid } from "@/components/AgentsGrid";
 import { TerminalTabs } from "@/components/TerminalTabs";
 import { CreateProject } from "@/components/CreateProject";
 import { AddProjectModal } from "@/components/AddProjectModal";
+import { NewWorkspaceModal } from "@/components/NewWorkspaceModal";
 import { EnvPanel } from "@/components/EnvPanel";
 import { ProjectSettings } from "@/components/ProjectSettings";
 import { JobNotifications } from "@/components/JobNotifications";
@@ -139,6 +140,7 @@ export function App() {
   const [activeProject, setActiveProject] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<string | null>(null);
   const [showAddProject, setShowAddProject] = useState(false);
+  const [newWsProject, setNewWsProject] = useState<string | null>(null);
   const [view, setView] = useState<ShellView>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(248);
@@ -179,7 +181,7 @@ export function App() {
     if (j) setActiveProject(j.projectId);
     setSelectedJob(id);
   };
-  const newWorkspace = (pid: string) => { setActiveProject(pid); setSelectedJob(null); setView("new-job"); };
+  const newWorkspace = (pid: string) => { setNewWsProject(pid); };
 
   function CenterContent() {
     switch (view) {
@@ -289,6 +291,7 @@ export function App() {
       </div>
 
       {showAddProject && <AddProjectModal onClose={() => setShowAddProject(false)} />}
+      {newWsProject && <NewWorkspaceModal projectId={newWsProject} onClose={() => setNewWsProject(null)} onJobCreated={openJob} />}
     </div>
   );
 }
