@@ -13,6 +13,7 @@ import {
   ensureEpicWorktree, commitOnly, mergeIntoBranch, createCheckpoint,
 } from "./agent/worktree";
 import { finalizeJobPush } from "./push";
+import { watchVercelDeploy } from "./vercel-watch";
 import { buildRepoMap } from "./agent/repo-map";
 import { parseDataUrl, safeFilename } from "./attachments";
 import { sendJobNotification } from "./notify";
@@ -527,6 +528,11 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
     if (outcome.ok) {
       log(jobId, "Job completed successfully.");
       await sendJobNotification({ jobId, title, status: "completed", projectName: project.name, changedFiles }).catch(() => {});
+      // Follow the Vercel deploy this push triggers; auto-fix the job on a failed
+      // build. Fire-and-forget — the watcher only needs the pushed SHA, not the
+      // worktree (it reopens the job itself if a fix is needed).
+      const pushed = await getJob(jobId).catch(() => null);
+      if (pushed?.pushedSha) void watchVercelDeploy(jobId, pushed.pushedSha);
       removeWorktree(project.localPath, worktreePath);
     } else {
       // Keep the worktree — RETRY PUSH re-runs the pipeline from it.

@@ -134,6 +134,19 @@ export const connectGithub = (token: string) =>
 
 export const fetchRepos = () => api<{ repos: Repo[] }>("/api/github/repos").then((r) => r.repos);
 
+// ── Vercel ───────────────────────────────────────────────────────────────────
+export const vercelStatus = () =>
+  api<{ connected: boolean; username: string }>("/api/vercel/status");
+
+export const connectVercel = (token: string, teamId?: string) =>
+  api<{ username: string }>("/api/vercel/connect", { method: "POST", body: JSON.stringify({ token, teamId }) });
+
+export const disconnectVercel = () =>
+  api<{ ok: boolean }>("/api/vercel/disconnect", { method: "POST" });
+
+// Hand the captured Vercel build error to the job's agent to fix + re-push.
+export const fixDeploy = (id: string) => api(`/api/jobs/${id}/fix-deploy`, { method: "POST" });
+
 export interface CreatedRepo { repo: string; defaultBranch: string; htmlUrl: string; localPath: string }
 export const createRepo = (name: string, description: string, isPrivate: boolean) =>
   api<CreatedRepo>("/api/projects/create-repo", {

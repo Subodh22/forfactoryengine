@@ -4,6 +4,7 @@ import { Save, Play, TerminalSquare, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useProject } from "@/lib/data";
 import { updateProject } from "@/lib/mutations";
+import { VercelConnect } from "@/components/VercelConnect";
 
 // Per-project settings: the setup script (runs once when a job's worktree is
 // created) and the run script (a launchable dev command, surfaced as a "Run"
@@ -96,6 +97,10 @@ export function ProjectSettings({ projectId }: { projectId: string }) {
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
         {saving ? "Saving…" : "Save settings"}
       </button>
+
+      <div className="border-t border-[#332f28] pt-6">
+        <VercelConnect />
+      </div>
     </div>
   );
 }

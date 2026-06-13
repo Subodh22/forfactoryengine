@@ -52,6 +52,12 @@ export interface Job {
   pushError: string;
   pushedSha: string;
   pushedTo: string;
+  deployState: "" | "building" | "ready" | "error" | "canceled";
+  deployUrl: string;
+  deployId: string;
+  deployTarget: string;
+  deployError: string;
+  deployFixAttempts: number;
   sessionId: string;
   commitSha: string;
   delegatorPlan: string;

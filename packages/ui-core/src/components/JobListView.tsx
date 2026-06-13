@@ -25,6 +25,7 @@ function optimisticJob(id: string, projectId: string, parentJobId: string, prior
     commitSha: "", delegatorPlan: "", needsApproval: false, model: "", effort: "",
     inputTokens: 0, outputTokens: 0, costUsd: 0, mergedToMain: false,
     pushState: "" as const, pushAttempts: 0, pushError: "", pushedSha: "", pushedTo: "",
+    deployState: "" as const, deployUrl: "", deployId: "", deployTarget: "", deployError: "", deployFixAttempts: 0,
     startedAt: 0, completedAt: 0, createdAt: Date.now(),
   };
 }

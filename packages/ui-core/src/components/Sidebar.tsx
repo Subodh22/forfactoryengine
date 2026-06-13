@@ -91,7 +91,7 @@ function ProjectTree({
     .slice(0, 40);
 
   return (
-    <div>
+    <div className="min-w-0">
       <div className="group flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-concrete-2/50">
         <button onClick={onToggle} className="flex items-center gap-1.5 min-w-0 flex-1 text-left overflow-hidden">
           <ChevronRight className={`w-3 h-3 flex-shrink-0 text-muted transition-transform ${expanded ? "rotate-90" : ""}`} />
@@ -115,7 +115,13 @@ function ProjectTree({
       </div>
 
       {expanded && (
-        <div className="ml-[14px] pl-2 border-l border-[#2a2722] flex flex-col">
+        <div className="ml-[14px] pl-2 border-l border-[#2a2722] flex flex-col min-w-0">
+          <button
+            onClick={() => onNewWorkspace(project.id)}
+            className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-md text-left text-[12px] text-muted hover:text-ink transition-colors"
+          >
+            <Plus className="w-3 h-3" /> New workspace
+          </button>
           {workspaces.map((ws) => {
             const isSel = ws.id === selectedJob;
             return (
@@ -123,7 +129,7 @@ function ProjectTree({
                 key={ws.id}
                 onClick={() => onSelectJob(ws.id)}
                 title={ws.title}
-                className={`flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-md text-left transition-colors ${
+                className={`flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-md text-left transition-colors w-full min-w-0 overflow-hidden ${
                   isSel ? "bg-concrete-2 text-ink" : "text-muted hover:bg-concrete-2/50 hover:text-ink"
                 }`}
               >
@@ -132,16 +138,10 @@ function ProjectTree({
                   style={{ backgroundColor: STATUS_DOT[ws.status] }}
                 />
                 <GitBranch className="w-3 h-3 flex-shrink-0 opacity-50" />
-                <span className="text-[12.5px] truncate">{ws.title || "Untitled"}</span>
+                <span className="text-[12.5px] truncate min-w-0">{ws.title || "Untitled"}</span>
               </button>
             );
           })}
-          <button
-            onClick={() => onNewWorkspace(project.id)}
-            className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-md text-left text-[12px] text-muted hover:text-ink transition-colors"
-          >
-            <Plus className="w-3 h-3" /> New workspace
-          </button>
         </div>
       )}
     </div>

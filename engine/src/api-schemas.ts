@@ -108,6 +108,11 @@ export const RollbackBodySchema = z.object({ sha: z.string().trim().min(1) });
 
 export const GithubConnectBodySchema = z.object({ token: z.string().trim().min(1) });
 
+export const VercelConnectBodySchema = z.object({
+  token: z.string().trim().min(1),
+  teamId: z.string().trim().optional(),
+});
+
 export const CloneBodySchema = z.object({
   repo: z.string().trim().min(1),
   targetPath: z.string().default(""),

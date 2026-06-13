@@ -1,9 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Monitor, ChevronDown, ChevronUp, Square, UploadCloud, Play } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Monitor, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
+import { DeployChip } from "./DeployChip";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { DiffViewer } from "./DiffViewer";
@@ -11,7 +12,7 @@ import { MentionInput } from "./MentionInput";
 import { Markdown } from "./Markdown";
 import { CheckpointsBar } from "./CheckpointsBar";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -213,6 +214,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <StatusBadge status={job.status} />
             <PushChip job={job} />
+            <DeployChip job={job} />
           </div>
         </div>
         <p className={`font-data text-[11px] text-muted mb-3 whitespace-pre-wrap ${isPending ? "" : "line-clamp-2"}`}>{job.prompt}</p>
@@ -457,6 +459,27 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
           </div>
           <pre className="text-xs text-[#f4604f]/80 font-mono whitespace-pre-wrap">{job.pushError}</pre>
           <p className="font-data text-[10px] uppercase text-muted mt-1.5">The work is committed and safe in its worktree — fix the cause, then retry.</p>
+        </div>
+      )}
+
+      {job.deployState === "error" && (
+        <div className="border-t border-[#f4604f]/60 bg-[#f4604f]/15 flex-shrink-0 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 mb-1.5">
+            <span className="font-data text-[10px] font-bold text-[#f4604f] uppercase tracking-widest">
+              Vercel {job.deployTarget || "preview"} deploy failed
+            </span>
+            <button
+              onClick={async () => {
+                try { await fixDeploy(job.id); toast.info("Sending the deploy error to the agent…"); }
+                catch (err) { toast.error(String(err instanceof Error ? err.message : err)); }
+              }}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md font-data text-[10px] uppercase border border-[#f4604f] text-[#f4604f] hover:bg-[#f4604f] hover:text-surface-deep transition-colors"
+            >
+              <Wrench className="w-2.5 h-2.5" /> Fix deploy error
+            </button>
+          </div>
+          <pre className="text-xs text-[#f4604f]/80 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">{job.deployError ? job.deployError.slice(-1500) : "(build log unavailable)"}</pre>
+          <p className="font-data text-[10px] uppercase text-muted mt-1.5">Auto-fix runs on its own; this re-sends the build error to the agent.</p>
         </div>
       )}
 

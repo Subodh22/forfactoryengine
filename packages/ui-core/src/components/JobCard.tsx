@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
+import { DeployChip } from "./DeployChip";
 import { ExternalLink, X, Play, GitBranch, RotateCcw, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import type { Job } from "@/lib/types";
@@ -58,6 +59,7 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
             )}
             <StatusBadge status={job.status} />
             <PushChip job={job} />
+            <DeployChip job={job} />
           </div>
         </div>
 

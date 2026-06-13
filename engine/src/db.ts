@@ -58,6 +58,10 @@ export type JobAssignee = "" | "agent" | "human";
 // succeed while the push to GitHub still fails. "" = nothing to push (yet).
 export type PushState = "" | "pushing" | "pushed" | "needs_help";
 
+// Vercel deploy lifecycle for the commit a job pushed. Tracked separately again:
+// the push can land cleanly yet the deploy still fail to build. "" = not watched.
+export type DeployState = "" | "building" | "ready" | "error" | "canceled";
+
 export interface Job {
   id: string;
   projectId: string;
@@ -81,6 +85,13 @@ export interface Job {
   pushError: string;
   pushedSha: string;
   pushedTo: string;
+  // Vercel deploy of the pushed commit (production after main, preview after a PR).
+  deployState: DeployState;
+  deployUrl: string;       // the deployment's inspector/preview URL
+  deployId: string;        // Vercel deployment uid
+  deployTarget: string;    // "production" | "preview"
+  deployError: string;     // captured build-error log tail (for the fix loop)
+  deployFixAttempts: number; // how many times auto-fix has retried this job's deploy
   sessionId: string;
   /** The commit recorded when the job's work landed — lets the diff endpoint
    *  show "what this job changed" long after its worktree/branch is gone. */
@@ -138,6 +149,12 @@ export async function initSchema(): Promise<void> {
       push_error     TEXT NOT NULL DEFAULT '',
       pushed_sha     TEXT NOT NULL DEFAULT '',
       pushed_to      TEXT NOT NULL DEFAULT '',
+      deploy_state   TEXT NOT NULL DEFAULT '',
+      deploy_url     TEXT NOT NULL DEFAULT '',
+      deploy_id      TEXT NOT NULL DEFAULT '',
+      deploy_target  TEXT NOT NULL DEFAULT '',
+      deploy_error   TEXT NOT NULL DEFAULT '',
+      deploy_fix_attempts INTEGER NOT NULL DEFAULT 0,
       session_id     TEXT NOT NULL DEFAULT '',
       commit_sha     TEXT NOT NULL DEFAULT '',
       delegator_plan TEXT NOT NULL DEFAULT '',
@@ -178,6 +195,12 @@ export async function initSchema(): Promise<void> {
     ["push_error", "TEXT NOT NULL DEFAULT ''"],
     ["pushed_sha", "TEXT NOT NULL DEFAULT ''"],
     ["pushed_to", "TEXT NOT NULL DEFAULT ''"],
+    ["deploy_state", "TEXT NOT NULL DEFAULT ''"],
+    ["deploy_url", "TEXT NOT NULL DEFAULT ''"],
+    ["deploy_id", "TEXT NOT NULL DEFAULT ''"],
+    ["deploy_target", "TEXT NOT NULL DEFAULT ''"],
+    ["deploy_error", "TEXT NOT NULL DEFAULT ''"],
+    ["deploy_fix_attempts", "INTEGER NOT NULL DEFAULT 0"],
     ["session_id", "TEXT NOT NULL DEFAULT ''"],
     ["delegator_plan", "TEXT NOT NULL DEFAULT ''"],
     ["needs_approval", "INTEGER NOT NULL DEFAULT 0"],
@@ -382,6 +405,12 @@ function rowToJob(r: Row): Job {
     pushError: String(r.push_error ?? ""),
     pushedSha: String(r.pushed_sha ?? ""),
     pushedTo: String(r.pushed_to ?? ""),
+    deployState: String(r.deploy_state ?? "") as DeployState,
+    deployUrl: String(r.deploy_url ?? ""),
+    deployId: String(r.deploy_id ?? ""),
+    deployTarget: String(r.deploy_target ?? ""),
+    deployError: String(r.deploy_error ?? ""),
+    deployFixAttempts: Number(r.deploy_fix_attempts ?? 0),
     sessionId: String(r.session_id ?? ""),
     commitSha: String(r.commit_sha ?? ""),
     delegatorPlan: String(r.delegator_plan ?? ""),
@@ -451,6 +480,12 @@ export async function createJob(input: {
     pushError: "",
     pushedSha: "",
     pushedTo: "",
+    deployState: "",
+    deployUrl: "",
+    deployId: "",
+    deployTarget: "",
+    deployError: "",
+    deployFixAttempts: 0,
     sessionId: "",
     commitSha: "",
     delegatorPlan: input.delegatorPlan ?? "",
@@ -483,6 +518,8 @@ const JOB_COLUMNS: Record<string, string> = {
   prNumber: "pr_number", error: "error", worktreePath: "worktree_path", sessionId: "session_id", commitSha: "commit_sha",
   pushState: "push_state", pushAttempts: "push_attempts", pushError: "push_error",
   pushedSha: "pushed_sha", pushedTo: "pushed_to",
+  deployState: "deploy_state", deployUrl: "deploy_url", deployId: "deploy_id",
+  deployTarget: "deploy_target", deployError: "deploy_error", deployFixAttempts: "deploy_fix_attempts",
   delegatorPlan: "delegator_plan", priority: "priority", parentJobId: "parent_job_id",
   startedAt: "started_at", completedAt: "completed_at", inputTokens: "input_tokens",
   outputTokens: "output_tokens", costUsd: "cost_usd", assignee: "assignee",
@@ -605,6 +642,7 @@ export async function requeueJob(id: string): Promise<void> {
   await patchJob(id, {
     status: "queued", error: "", prUrl: "", prNumber: 0, mergedToMain: false, startedAt: 0, completedAt: 0,
     pushState: "", pushAttempts: 0, pushError: "", pushedSha: "", pushedTo: "",
+    deployState: "", deployUrl: "", deployId: "", deployTarget: "", deployError: "", deployFixAttempts: 0,
   });
 }
 

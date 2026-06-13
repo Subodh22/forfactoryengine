@@ -17,7 +17,7 @@ import {
   AppendBodySchema, ClaudeMdBodySchema, CloneBodySchema, CreateChildrenBodySchema,
   CreateJobBodySchema, CreateProjectBodySchema, CreateRepoBodySchema, EnvWriteBodySchema,
   GithubConnectBodySchema, PatchJobBodySchema, RedoBodySchema, ReplyBodySchema,
-  SetStatusBodySchema, UpdateProjectBodySchema, RollbackBodySchema,
+  SetStatusBodySchema, UpdateProjectBodySchema, RollbackBodySchema, VercelConnectBodySchema,
 } from "./api-schemas";
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
@@ -29,6 +29,8 @@ import { scheduleDelegationCheck, finalizeEpic } from "./delegator-scheduler";
 import { getClaudeUsage } from "./usage";
 import { checkAuth, authEnabled } from "./auth";
 import { getUser, fetchUserRepos, createRepo, getPrChecks } from "./agent/github";
+import { getVercelUser } from "./agent/vercel";
+import { triggerDeployFix } from "./vercel-watch";
 import { getJobDiff, listFilesIn, readFileIn, restoreCheckpoint } from "./agent/worktree";
 import { oauthConfigured, OAUTH_CALLBACK, APP_URL } from "./config";
 import { newState, consumeState, authorizeUrl, exchangeCode } from "./oauth";
@@ -114,7 +116,16 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
   const rel = pathname === "/" ? "/index.html" : pathname;
   let file = path.join(UI_DIST, rel);
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(UI_DIST, "index.html");
-  res.writeHead(200, { "Content-Type": MIME[path.extname(file)] ?? "application/octet-stream" });
+  // Vite emits content-hashed asset filenames, so they're safe to cache forever.
+  // The HTML shell must always revalidate, otherwise a fresh build's new asset
+  // hashes never reach the browser and the UI looks stale after every rebuild.
+  const cacheControl = path.basename(file) === "index.html"
+    ? "no-cache"
+    : "public, max-age=31536000, immutable";
+  res.writeHead(200, {
+    "Content-Type": MIME[path.extname(file)] ?? "application/octet-stream",
+    "Cache-Control": cacheControl,
+  });
   fs.createReadStream(file).pipe(res);
 }
 
@@ -182,6 +193,31 @@ export function startServer(port: number): http.Server {
         const token = await getSetting("githubToken");
         if (!token) return sendJson(res, 400, { error: "connect GitHub first" });
         return sendJson(res, 200, { repos: await fetchUserRepos(token) });
+      }
+
+      // ── Vercel ── deploy monitoring + auto-fix of failed builds
+      if (method === "GET" && pathname === "/api/vercel/status") {
+        const username = await getSetting("vercelLogin");
+        return sendJson(res, 200, { connected: Boolean(username), username: username ?? "" });
+      }
+      if (method === "POST" && pathname === "/api/vercel/connect") {
+        const b = await parseBody(req, res, VercelConnectBodySchema);
+        if (!b) return;
+        try {
+          const { username } = await getVercelUser(b.token);
+          await setSetting("vercelToken", b.token);
+          await setSetting("vercelLogin", username);
+          await setSetting("vercelTeamId", b.teamId ?? "");
+          return sendJson(res, 200, { username });
+        } catch {
+          return sendJson(res, 400, { error: "invalid Vercel token" });
+        }
+      }
+      if (method === "POST" && pathname === "/api/vercel/disconnect") {
+        await setSetting("vercelToken", "");
+        await setSetting("vercelLogin", "");
+        await setSetting("vercelTeamId", "");
+        return sendJson(res, 200, { ok: true });
       }
 
       // ── Usage ──
@@ -443,6 +479,14 @@ export function startServer(port: number): http.Server {
           if (!ok) return sendJson(res, 500, { error: "failed to restore checkpoint" });
           const updated = await getJob(id);
           if (updated) broadcast({ type: "job.updated", job: updated });
+          return sendJson(res, 200, { ok: true });
+        }
+        if (method === "POST" && action === "fix-deploy") {
+          // Hand the captured Vercel build error to the job's agent so it can
+          // fix + re-push. Used by the chat button; the watcher also calls this
+          // path automatically when auto-fix is on.
+          const accepted = await triggerDeployFix(id, { manual: true });
+          if (!accepted) return sendJson(res, 409, { error: "no failed deploy to fix for this job" });
           return sendJson(res, 200, { ok: true });
         }
         if (method === "PATCH" && !action) {
