@@ -108,7 +108,7 @@ function ProjectTree({
         <button
           onClick={() => onNewWorkspace(project.id)}
           title="New workspace"
-          className="text-muted hover:text-ink flex-shrink-0 p-0.5"
+          className="text-ink hover:text-[#b08a3e] flex-shrink-0 p-0.5"
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -136,14 +136,12 @@ function ProjectTree({
               </button>
             );
           })}
-          {workspaces.length === 0 && (
-            <button
-              onClick={() => onNewWorkspace(project.id)}
-              className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-md text-left text-[12px] text-muted hover:text-ink transition-colors"
-            >
-              <Plus className="w-3 h-3" /> New workspace
-            </button>
-          )}
+          <button
+            onClick={() => onNewWorkspace(project.id)}
+            className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-md text-left text-[12px] text-muted hover:text-ink transition-colors"
+          >
+            <Plus className="w-3 h-3" /> New workspace
+          </button>
         </div>
       )}
     </div>
