@@ -93,7 +93,7 @@ function ProjectTree({
   return (
     <div>
       <div className="group flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-concrete-2/50">
-        <button onClick={onToggle} className="flex items-center gap-1.5 min-w-0 flex-1 text-left">
+        <button onClick={onToggle} className="flex items-center gap-1.5 min-w-0 flex-1 text-left overflow-hidden">
           <ChevronRight className={`w-3 h-3 flex-shrink-0 text-muted transition-transform ${expanded ? "rotate-90" : ""}`} />
           <span className="w-2 h-2 rounded-[3px] flex-shrink-0" style={{ backgroundColor: project.color || "#b08a3e" }} />
           <span className="text-[13px] truncate text-ink/90">{project.name}</span>
@@ -108,9 +108,9 @@ function ProjectTree({
         <button
           onClick={() => onNewWorkspace(project.id)}
           title="New workspace"
-          className="text-muted hover:text-ink transition-opacity flex-shrink-0 p-0.5"
+          className="text-muted hover:text-ink flex-shrink-0 p-0.5"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-4 h-4" />
         </button>
       </div>
 
