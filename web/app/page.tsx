@@ -131,8 +131,15 @@ export default function Home() {
                 {p.name}
               </button>
               <button
+                onClick={(e) => { e.stopPropagation(); setActiveProject(p.id); setTab("chat"); }}
+                className={`hover:opacity-60 transition-opacity ${p.id === activeProject ? "text-concrete" : "text-ink"}`}
+                title={`New job in ${p.name}`}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+              <button
                 onClick={(e) => { e.stopPropagation(); if (confirm(`Remove "${p.name}" from Factory?`)) { removeProject(p.id); if (activeProject === p.id) setActiveProject(null); } }}
-                className={`ml-1 hover:opacity-60 transition-opacity ${p.id === activeProject ? "text-concrete" : "text-ink"}`}
+                className={`hover:opacity-60 transition-opacity ${p.id === activeProject ? "text-concrete" : "text-ink"}`}
                 title={`Remove ${p.name}`}
               >
                 <X className="w-3 h-3" />
