@@ -232,7 +232,7 @@ export default function Home() {
                 <p className="font-data text-[11px] uppercase text-muted">Choose a repo from the top bar to get started</p>
               </div>
             )}
-            {tab === "terminal" && project && <TerminalPanel project={{ name: project.name, localPath: project.localPath }} />}
+            {tab === "terminal" && project && <TerminalPanel cwd={project.localPath} active={tab === "terminal"} />}
             {tab === "terminal" && !project && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
                 <p className="font-display uppercase text-sm text-ink">Select a project to open a terminal</p>
