@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef } from "react";
 import { X } from "lucide-react";
 import { ProjectBoard } from "@/components/ProjectBoard";
+import { ProjectTabs } from "@/components/ProjectTabs";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MasterFeed } from "@/components/MasterFeed";
 import { WorkspaceView } from "@/components/WorkspaceView";
@@ -184,7 +185,14 @@ export function App() {
   function CenterContent() {
     switch (view) {
       case "dashboard":
-        return <div className="h-full overflow-y-auto p-4 sm:p-6"><ProjectBoard projectId={projectId} onSelectJob={openJob} /></div>;
+        return (
+          <div className="h-full flex flex-col overflow-hidden">
+            <div className="px-4 sm:px-6 pt-3">
+              <ProjectTabs projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} />
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6"><ProjectBoard projectId={projectId} onSelectJob={openJob} /></div>
+          </div>
+        );
       case "history":
         return <div className="h-full overflow-hidden"><MasterFeed onSelectJob={openJob} /></div>;
       case "new-job":
