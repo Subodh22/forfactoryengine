@@ -454,7 +454,7 @@ export function startServer(port: number): http.Server {
           if (!job) return sendJson(res, 404, { error: "not found" });
           if (!job.prNumber) return sendJson(res, 200, { checks: [], state: "no-pr" });
           const project = await getProject(job.projectId);
-          const token = project?.githubToken || process.env.GH_TOKEN || "";
+          const token = project?.githubToken || (await getSetting("githubToken")) || process.env.GH_TOKEN || "";
           if (!project?.repo || !token) return sendJson(res, 200, { checks: [], state: "no-token" });
           const [owner, repo] = project.repo.split("/");
           try {
