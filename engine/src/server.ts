@@ -455,8 +455,14 @@ export function startServer(port: number): http.Server {
           if (!job.prNumber) return sendJson(res, 200, { checks: [], state: "no-pr" });
           const project = await getProject(job.projectId);
           const token = project?.githubToken || (await getSetting("githubToken")) || process.env.GH_TOKEN || "";
-          if (!project?.repo || !token) return sendJson(res, 200, { checks: [], state: "no-token" });
-          const [owner, repo] = project.repo.split("/");
+          // Derive owner/repo from project.repo or fall back to the PR URL
+          let repoSlug = project?.repo || "";
+          if (!repoSlug && job.prUrl) {
+            const m = job.prUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+            if (m) repoSlug = m[1];
+          }
+          if (!repoSlug || !token) return sendJson(res, 200, { checks: [], state: "no-token" });
+          const [owner, repo] = repoSlug.split("/");
           try {
             const { checks } = await getPrChecks(token, owner, repo, job.prNumber);
             return sendJson(res, 200, { checks, state: "ok" });
