@@ -47,7 +47,7 @@ export interface Job {
   prUrl: string;
   prNumber: number;
   error: string;
-  pushState: "" | "pushing" | "pushed" | "needs_help";
+  pushState: "" | "pushing" | "pushed" | "checking_ci" | "fixing_ci" | "needs_help";
   pushAttempts: number;
   pushError: string;
   pushedSha: string;
@@ -58,6 +58,9 @@ export interface Job {
   deployTarget: string;
   deployError: string;
   deployFixAttempts: number;
+  ciStatus: "" | "pending" | "passed" | "failed";
+  ciRunUrl: string;
+  ciAttempts: number;
   sessionId: string;
   commitSha: string;
   delegatorPlan: string;

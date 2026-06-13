@@ -88,6 +88,111 @@ export async function getPrChecks(
   return { checks, sha };
 }
 
+// ── GitHub Actions (CI monitoring) ────────────────────────────────────────────
+
+export type CiState = "none" | "pending" | "passed" | "failed";
+
+export interface CiFailedRun { id: number; name: string; htmlUrl: string; conclusion: string }
+
+export interface CiStatusResult {
+  state: CiState;
+  /** Best link for the UI — the failing run if any, else the latest run. */
+  htmlUrl: string;
+  failedRuns: CiFailedRun[];
+  /** Short human-readable line, e.g. "build: failure; lint: timed_out". */
+  summary: string;
+}
+
+// A run's conclusion that doesn't count as a failure (still "green enough").
+const OK_CONCLUSIONS = new Set(["success", "skipped", "neutral"]);
+
+/** Aggregate every GitHub Actions workflow run for a commit into a single CI
+ *  state. We keep only the newest run per workflow (re-runs supersede), so a
+ *  fixed-then-rerun workflow reads as passed. */
+export async function getActionsStatusForSha(
+  token: string, owner: string, repo: string, sha: string,
+): Promise<CiStatusResult> {
+  const client = octo(token);
+  const { data } = await client.actions.listWorkflowRunsForRepo({
+    owner, repo, head_sha: sha, per_page: 100,
+  });
+  const runs = data.workflow_runs ?? [];
+  if (!runs.length) return { state: "none", htmlUrl: "", failedRuns: [], summary: "no workflow runs" };
+
+  // Newest run per workflow_id wins.
+  const latest = new Map<number, (typeof runs)[number]>();
+  for (const r of runs) {
+    const prev = latest.get(r.workflow_id);
+    if (!prev || r.run_number > prev.run_number) latest.set(r.workflow_id, r);
+  }
+  const considered = [...latest.values()];
+
+  const pending = considered.filter((r) => r.status !== "completed");
+  if (pending.length) {
+    return {
+      state: "pending", htmlUrl: pending[0]!.html_url, failedRuns: [],
+      summary: `${pending.length} run(s) in progress`,
+    };
+  }
+
+  const failed = considered.filter((r) => !OK_CONCLUSIONS.has(String(r.conclusion)));
+  if (failed.length) {
+    return {
+      state: "failed",
+      htmlUrl: failed[0]!.html_url,
+      failedRuns: failed.map((r) => ({
+        id: r.id, name: r.name ?? "workflow", htmlUrl: r.html_url, conclusion: String(r.conclusion),
+      })),
+      summary: failed.map((r) => `${r.name ?? "workflow"}: ${r.conclusion}`).join("; "),
+    };
+  }
+
+  return { state: "passed", htmlUrl: considered[0]?.html_url ?? "", failedRuns: [], summary: "all runs passed" };
+}
+
+/** Keep the most informative tail of a log: the last `maxLines` lines, capped
+ *  at `maxChars`. CI logs are timestamp-prefixed and huge; the failure is
+ *  almost always near the end. */
+function tailLog(text: string, maxLines = 150, maxChars = 12_000): string {
+  const lines = text.split(/\r?\n/);
+  let tail = lines.slice(-maxLines).join("\n");
+  if (tail.length > maxChars) tail = tail.slice(tail.length - maxChars);
+  return tail.trim();
+}
+
+/** For a failed workflow run, gather the failed jobs, their failed step names,
+ *  and the tail of each job's log — the context the agent needs to diagnose. */
+export async function getFailedRunLogs(
+  token: string, owner: string, repo: string, runId: number,
+): Promise<string> {
+  const client = octo(token);
+  const { data } = await client.actions.listJobsForWorkflowRun({ owner, repo, run_id: runId, per_page: 100 });
+  const failedJobs = (data.jobs ?? []).filter(
+    (j) => j.conclusion && !OK_CONCLUSIONS.has(j.conclusion),
+  );
+  if (!failedJobs.length) return "";
+
+  const chunks: string[] = [];
+  for (const job of failedJobs.slice(0, 4)) {
+    const failedSteps = (job.steps ?? [])
+      .filter((s) => s.conclusion && !OK_CONCLUSIONS.has(s.conclusion))
+      .map((s) => s.name);
+    chunks.push(`### Job "${job.name}" → ${job.conclusion}` +
+      (failedSteps.length ? ` (failed step: ${failedSteps.join(", ")})` : ""));
+    try {
+      const resp = await client.actions.downloadJobLogsForWorkflowRun({ owner, repo, job_id: job.id });
+      const raw = resp.data as unknown;
+      const text = typeof raw === "string"
+        ? raw
+        : Buffer.from(raw as ArrayBuffer).toString("utf8");
+      chunks.push("```\n" + tailLog(text) + "\n```");
+    } catch (err) {
+      chunks.push(`(could not download logs: ${String(err)})`);
+    }
+  }
+  return chunks.join("\n\n");
+}
+
 export interface CreatedRepo { fullName: string; defaultBranch: string; htmlUrl: string }
 
 /** Create a brand-new repo on the authenticated user's account, seeded with an

@@ -56,7 +56,13 @@ export type JobAssignee = "" | "agent" | "human";
 
 // Push lifecycle, tracked separately from job status: the agent's work can
 // succeed while the push to GitHub still fails. "" = nothing to push (yet).
-export type PushState = "" | "pushing" | "pushed" | "needs_help";
+// "checking_ci"/"fixing_ci" extend the lifecycle past a successful push: once
+// the branch is up, the engine watches GitHub Actions and, on a red run, resumes
+// the agent to troubleshoot+fix before re-checking. "pushed" is the terminal
+// success (CI green or no CI); a CI failure the agent can't fix → "needs_help".
+export type PushState = "" | "pushing" | "pushed" | "checking_ci" | "fixing_ci" | "needs_help";
+// Last observed GitHub Actions conclusion for the pushed commit.
+export type CiStatus = "" | "pending" | "passed" | "failed";
 
 // Vercel deploy lifecycle for the commit a job pushed. Tracked separately again:
 // the push can land cleanly yet the deploy still fail to build. "" = not watched.
@@ -92,6 +98,11 @@ export interface Job {
   deployTarget: string;    // "production" | "preview"
   deployError: string;     // captured build-error log tail (for the fix loop)
   deployFixAttempts: number; // how many times auto-fix has retried this job's deploy
+  /** GitHub Actions monitoring (PR flow only). ciStatus is the last conclusion;
+   *  ciRunUrl links to the (failing) run; ciAttempts counts agent fix passes. */
+  ciStatus: CiStatus;
+  ciRunUrl: string;
+  ciAttempts: number;
   sessionId: string;
   /** The commit recorded when the job's work landed — lets the diff endpoint
    *  show "what this job changed" long after its worktree/branch is gone. */
@@ -155,6 +166,9 @@ export async function initSchema(): Promise<void> {
       deploy_target  TEXT NOT NULL DEFAULT '',
       deploy_error   TEXT NOT NULL DEFAULT '',
       deploy_fix_attempts INTEGER NOT NULL DEFAULT 0,
+      ci_status      TEXT NOT NULL DEFAULT '',
+      ci_run_url     TEXT NOT NULL DEFAULT '',
+      ci_attempts    INTEGER NOT NULL DEFAULT 0,
       session_id     TEXT NOT NULL DEFAULT '',
       commit_sha     TEXT NOT NULL DEFAULT '',
       delegator_plan TEXT NOT NULL DEFAULT '',
@@ -201,6 +215,9 @@ export async function initSchema(): Promise<void> {
     ["deploy_target", "TEXT NOT NULL DEFAULT ''"],
     ["deploy_error", "TEXT NOT NULL DEFAULT ''"],
     ["deploy_fix_attempts", "INTEGER NOT NULL DEFAULT 0"],
+    ["ci_status", "TEXT NOT NULL DEFAULT ''"],
+    ["ci_run_url", "TEXT NOT NULL DEFAULT ''"],
+    ["ci_attempts", "INTEGER NOT NULL DEFAULT 0"],
     ["session_id", "TEXT NOT NULL DEFAULT ''"],
     ["delegator_plan", "TEXT NOT NULL DEFAULT ''"],
     ["needs_approval", "INTEGER NOT NULL DEFAULT 0"],
@@ -411,6 +428,9 @@ function rowToJob(r: Row): Job {
     deployTarget: String(r.deploy_target ?? ""),
     deployError: String(r.deploy_error ?? ""),
     deployFixAttempts: Number(r.deploy_fix_attempts ?? 0),
+    ciStatus: String(r.ci_status ?? "") as CiStatus,
+    ciRunUrl: String(r.ci_run_url ?? ""),
+    ciAttempts: Number(r.ci_attempts ?? 0),
     sessionId: String(r.session_id ?? ""),
     commitSha: String(r.commit_sha ?? ""),
     delegatorPlan: String(r.delegator_plan ?? ""),
@@ -486,6 +506,9 @@ export async function createJob(input: {
     deployTarget: "",
     deployError: "",
     deployFixAttempts: 0,
+    ciStatus: "",
+    ciRunUrl: "",
+    ciAttempts: 0,
     sessionId: "",
     commitSha: "",
     delegatorPlan: input.delegatorPlan ?? "",
@@ -520,6 +543,7 @@ const JOB_COLUMNS: Record<string, string> = {
   pushedSha: "pushed_sha", pushedTo: "pushed_to",
   deployState: "deploy_state", deployUrl: "deploy_url", deployId: "deploy_id",
   deployTarget: "deploy_target", deployError: "deploy_error", deployFixAttempts: "deploy_fix_attempts",
+  ciStatus: "ci_status", ciRunUrl: "ci_run_url", ciAttempts: "ci_attempts",
   delegatorPlan: "delegator_plan", priority: "priority", parentJobId: "parent_job_id",
   startedAt: "started_at", completedAt: "completed_at", inputTokens: "input_tokens",
   outputTokens: "output_tokens", costUsd: "cost_usd", assignee: "assignee",
@@ -643,6 +667,7 @@ export async function requeueJob(id: string): Promise<void> {
     status: "queued", error: "", prUrl: "", prNumber: 0, mergedToMain: false, startedAt: 0, completedAt: 0,
     pushState: "", pushAttempts: 0, pushError: "", pushedSha: "", pushedTo: "",
     deployState: "", deployUrl: "", deployId: "", deployTarget: "", deployError: "", deployFixAttempts: 0,
+    ciStatus: "", ciRunUrl: "", ciAttempts: 0,
   });
 }
 
