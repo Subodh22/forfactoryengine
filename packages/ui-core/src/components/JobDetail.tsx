@@ -1,7 +1,7 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Wrench, GitMerge, X, Check, ClipboardList, Trash2 } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Wrench, GitMerge, X, Check, ClipboardList, Trash2, ArrowDown } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
@@ -81,6 +81,29 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
   const prevMessagesLen = useRef(messages.length);
   const prevOutputLen2 = useRef(output.length);
 
+  // --- Professional chat scroll state ---
+  // Whether the user is pinned to the bottom of the chat (auto-scroll active)
+  const chatPinnedRef = useRef(true);
+  const [chatHasNew, setChatHasNew] = useState(false);
+
+  // Track whether user scrolls away from the bottom
+  const handleChatScroll = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    chatPinnedRef.current = atBottom;
+    if (atBottom) setChatHasNew(false);
+  }, []);
+
+  // Scroll chat to the very bottom (instant, no animation jitter)
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "instant") => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    chatPinnedRef.current = true;
+    setChatHasNew(false);
+  }, []);
+
   useEffect(() => {
     if (messages.length > prevMessagesLen.current && activeTab !== "chat") {
       setUnseenChat(true);
@@ -148,7 +171,7 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
   const lastToolLine = [...lines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
   const activeTool = isRunning && lastToolLine ? lastToolLine.slice(7) : null;
 
-  // Auto-scroll only when user is near the bottom (not scrolled up reading history)
+  // Output log auto-scroll (near-bottom only)
   useEffect(() => {
     if (activeTab === "output" && outputScrollRef.current) {
       const el = outputScrollRef.current;
@@ -157,22 +180,25 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
     }
   }, [output, activeTab]);
 
-  useEffect(() => {
-    if (activeTab === "chat" && chatScrollRef.current) {
-      const el = chatScrollRef.current;
-      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-      if (nearBottom) chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, activeTab]);
-
-  /* scroll to bottom when the chat tab becomes active (including first mount) */
-  useEffect(() => {
+  // Chat: snap to bottom on tab switch or first mount (synchronous to avoid flicker)
+  useLayoutEffect(() => {
     if (activeTab === "chat") {
-      requestAnimationFrame(() => {
-        chatBottomRef.current?.scrollIntoView({ behavior: "instant" });
-      });
+      chatPinnedRef.current = true;
+      setChatHasNew(false);
+      // Two rAFs: one for React render, one for browser layout
+      requestAnimationFrame(() => requestAnimationFrame(() => scrollChatToBottom()));
     }
-  }, [activeTab]);
+  }, [activeTab, scrollChatToBottom]);
+
+  // Chat: auto-scroll on new messages when pinned, or show "new messages" pill
+  useEffect(() => {
+    if (activeTab !== "chat") return;
+    if (chatPinnedRef.current) {
+      requestAnimationFrame(() => scrollChatToBottom("smooth"));
+    } else {
+      setChatHasNew(true);
+    }
+  }, [messages, activeTab, scrollChatToBottom]);
 
   const canChat = !!job && !isPending && !isPlanReview;
 
@@ -196,6 +222,8 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
     e?.preventDefault();
     if ((!reply.trim() && !attachedFiles.length) || sending) return;
     setSending(true);
+    // Snap to bottom when the user sends a message (like every chat app)
+    requestAnimationFrame(() => scrollChatToBottom("smooth"));
     const text = reply.trim();
     const images = attachedFiles;
     setReply("");
@@ -404,7 +432,7 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
           </div>
         )}
         {activeTab === "chat" && (
-          <div ref={chatScrollRef} className="flex-1 overflow-y-auto bg-concrete px-4 py-4 min-h-0">
+          <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto bg-concrete px-4 py-4 min-h-0 relative">
             <div className="max-w-[820px] mx-auto">
               <CheckpointsBar jobId={jobId} refreshKey={`${job.status}-${messages.length}`} />
               <ActivityTimeline
@@ -426,6 +454,14 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
               />
             </div>
             <div ref={chatBottomRef} />
+            {chatHasNew && (
+              <button
+                onClick={() => scrollChatToBottom("smooth")}
+                className="sticky bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#b08a3e] text-[#14110e] font-data text-[11px] font-bold uppercase shadow-lg hover:brightness-110 transition-all z-10"
+              >
+                <ArrowDown className="w-3 h-3" /> New messages
+              </button>
+            )}
           </div>
         )}
       </div>
