@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench, GitMerge, X, Check, ClipboardList } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Wrench, GitMerge, X, Check, ClipboardList } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
@@ -10,8 +10,8 @@ import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { DiffViewer } from "./DiffViewer";
 import { MentionInput } from "./MentionInput";
-import { Markdown } from "./Markdown";
 import { CheckpointsBar } from "./CheckpointsBar";
+import { ActivityTimeline } from "./ActivityTimeline";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
 import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob, approvePlan } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
@@ -314,7 +314,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
         )}
         <div className="px-3 py-0 border-b border-[#2a2722] flex items-center gap-1 flex-shrink-0 bg-concrete">
           <button onClick={() => setActiveTab("chat")} className={`px-2.5 py-2 text-[12px] flex items-center gap-1.5 border-b -mb-px transition-colors ${activeTab === "chat" ? "text-ink border-[#b08a3e]" : "text-muted border-transparent hover:text-ink"}`}>
-            Chat
+            Activity
             {unseenChat && <span className="w-1.5 h-1.5 bg-[#b08a3e] rounded-full flex-shrink-0" />}
           </button>
           <button onClick={() => setActiveTab("output")} className={`px-2.5 py-2 text-[12px] flex items-center gap-1.5 border-b -mb-px transition-colors ${activeTab === "output" ? "text-ink border-[#b08a3e]" : "text-muted border-transparent hover:text-ink"}`}>
@@ -362,68 +362,26 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
         )}
         {activeTab === "chat" && (
           <div className="flex-1 overflow-y-auto bg-concrete px-4 py-4 min-h-0">
-            <div className="max-w-[820px] mx-auto"><CheckpointsBar jobId={jobId} refreshKey={`${job.status}-${messages.length}`} /></div>
-            {messages.length > 0 ? (
-              <div className="max-w-[820px] mx-auto space-y-6">
-                {messages.map((msg) => (
-                  msg.role === "assistant" ? (
-                    <div key={msg.id} className="flex flex-col gap-2">
-                      <div className="flex items-center gap-1.5 text-[11px] text-muted">
-                        <span className="w-3.5 h-3.5 rounded-[4px] bg-[#b08a3e] inline-block" />
-                        <span className="font-medium text-ink/70">Claude</span>
-                      </div>
-                      {msg.images && msg.images.length > 0 && (
-                        <div className="flex gap-1.5 flex-wrap mb-1">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
-                      )}
-                      <div className="pl-0.5">
-                        <Markdown text={msg.text} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div key={msg.id} className="flex flex-col items-end gap-1.5">
-                      <span className="text-[11px] text-muted">You</span>
-                      <div className="max-w-[85%] rounded-xl rounded-tr-sm bg-concrete-2 border border-[#332f28] px-3.5 py-2.5 text-[13px] text-ink/90 whitespace-pre-wrap leading-relaxed">
-                        {msg.images && msg.images.length > 0 && (
-                          <div className="flex gap-1.5 flex-wrap mb-1.5">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
-                        )}
-                        {msg.text}
-                      </div>
-                    </div>
-                  )
-                ))}
-                {(isRunning || isDelegating) && (
-                  <div className="flex items-center gap-2 text-[12px] text-muted">
-                    <span className="w-3.5 h-3.5 rounded-[4px] bg-[#b08a3e]/60 inline-block animate-pulse" />
-                    <span className="flex gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </span>
-                    <span>{isThinking ? "thinking…" : activeTool ? activeTool : "working…"}</span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
-                <p className="text-[13px] text-ink/70">{isRunning || isDelegating ? "Claude is working…" : "No messages yet"}</p>
-                <p className="font-data text-[11px] text-muted">{isPending ? "This workspace hasn't started yet." : "Replies and Claude's responses appear here."}</p>
-                {isPending && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        await queueJob(jobId);
-                        toast.success("Job queued");
-                      } catch (err) {
-                        toast.error(String(err instanceof Error ? err.message : err) || "Failed to start");
-                      }
-                    }}
-                    className="mt-2 flex items-center gap-1.5 px-4 py-2 bg-[#b08a3e] text-[#14110e] font-bold font-data text-[11px] uppercase hover:brightness-110 transition-all brutal-press"
-                  >
-                    <Play className="w-3.5 h-3.5" />Run
-                  </button>
-                )}
-              </div>
-            )}
+            <div className="max-w-[820px] mx-auto">
+              <CheckpointsBar jobId={jobId} refreshKey={`${job.status}-${messages.length}`} />
+              <ActivityTimeline
+                messages={messages}
+                output={output}
+                isRunning={isRunning}
+                isDelegating={isDelegating}
+                isThinking={isThinking}
+                activeTool={activeTool}
+                isPending={isPending}
+                onStartJob={async () => {
+                  try {
+                    await queueJob(jobId);
+                    toast.success("Job queued");
+                  } catch (err) {
+                    toast.error(String(err instanceof Error ? err.message : err) || "Failed to start");
+                  }
+                }}
+              />
+            </div>
             <div ref={bottomRef} />
           </div>
         )}
