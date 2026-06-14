@@ -216,30 +216,30 @@ export function PlanBuilder({ projectId }: Props) {
   }
 
   return (
-    <div className=”rounded-xl border border-[rgba(255,255,255,0.09)] bg-paper brutal-shadow overflow-hidden”>
-      <div className=”flex justify-between items-center px-4 py-3 border-b border-[rgba(255,255,255,0.06)] gap-3”>
-        <b className=”font-display text-[14px] flex items-center gap-2”><ListTree className=”w-4 h-4” /> Plan it yourself</b>
-        <div className=”flex items-center gap-3”>
-          <span className=”font-data text-[10px] text-muted”>{doneCount}/{tasks.length} done</span>
-          <div className=”flex rounded-lg border border-[rgba(255,255,255,0.09)] overflow-hidden”>
+    <div className="rounded-xl border border-[rgba(255,255,255,0.09)] bg-paper brutal-shadow overflow-hidden">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-[rgba(255,255,255,0.06)] gap-3">
+        <b className="font-display text-[14px] flex items-center gap-2"><ListTree className="w-4 h-4" /> Plan it yourself</b>
+        <div className="flex items-center gap-3">
+          <span className="font-data text-[10px] text-muted">{doneCount}/{tasks.length} done</span>
+          <div className="flex rounded-lg border border-[rgba(255,255,255,0.09)] overflow-hidden">
             <button
-              onClick={() => setView(“list”)}
-              className={`font-data text-[10px] px-2 py-1 flex items-center gap-1 transition-colors ${view === “list” ? “bg-ink text-concrete” : “text-muted hover:text-ink hover:bg-concrete-2”}`}
-            ><ListIcon className=”w-3 h-3” /> List</button>
+              onClick={() => setView("list")}
+              className={`font-data text-[10px] px-2 py-1 flex items-center gap-1 transition-colors ${view === "list" ? "bg-ink text-concrete" : "text-muted hover:text-ink hover:bg-concrete-2"}`}
+            ><ListIcon className="w-3 h-3" /> List</button>
             <button
-              onClick={() => setView(“board”)}
-              className={`font-data text-[10px] px-2 py-1 flex items-center gap-1 border-l border-[rgba(255,255,255,0.09)] transition-colors ${view === “board” ? “bg-ink text-concrete” : “text-muted hover:text-ink hover:bg-concrete-2”}`}
-            ><LayoutGrid className=”w-3 h-3” /> Board</button>
+              onClick={() => setView("board")}
+              className={`font-data text-[10px] px-2 py-1 flex items-center gap-1 border-l border-[rgba(255,255,255,0.09)] transition-colors ${view === "board" ? "bg-ink text-concrete" : "text-muted hover:text-ink hover:bg-concrete-2"}`}
+            ><LayoutGrid className="w-3 h-3" /> Board</button>
           </div>
         </div>
       </div>
 
-      <div className=”px-4 py-3 border-b border-[rgba(255,255,255,0.06)]”>
+      <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.06)]">
         <input
           value={planName}
           onChange={(e) => { setPlanName(e.target.value); nameDebounce.call(e.target.value); }}
-          placeholder=”Plan name — e.g. Ship the billing page”
-          className=”w-full rounded-md border border-[rgba(255,255,255,0.09)] bg-concrete px-3 py-2 font-mono text-[14px] text-ink placeholder:text-muted/60 focus:outline-none focus:border-[#b08a3e] transition-colors”
+          placeholder="Plan name — e.g. Ship the billing page"
+          className="w-full rounded-md border border-[rgba(255,255,255,0.09)] bg-concrete px-3 py-2 font-mono text-[14px] text-ink placeholder:text-muted/60 focus:outline-none focus:border-[#b08a3e] transition-colors"
         />
       </div>
 
