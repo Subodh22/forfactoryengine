@@ -164,6 +164,35 @@ function warn(context: string): (err: unknown) => void {
   return (err) => console.error(`[factory] ${context} failed: ${err}`);
 }
 
+// ── Reply format ────────────────────────────────────────────────────────────
+// Prepended to every first turn so Claude always replies with structured,
+// readable markdown — matching the Conductor UI's dark-theme rendering.
+const REPLY_FORMAT = `When you finish a task or respond to the user, structure your reply using clean, structured markdown:
+
+## What happened
+Briefly explain what you did and why.
+
+## What changed
+List the files and key changes you made. Use bullet points.
+
+## What's next
+State what needs to happen now — any follow-up steps, things to test, or decisions needed.
+
+Keep each section concise. Skip a section only if it truly doesn't apply (e.g. no files changed).
+
+Formatting rules:
+- Use **## headings** to break your reply into clear sections
+- Use **bullet points** (- or *) for lists of changes, files, or steps
+- Use **numbered lists** (1. 2. 3.) for sequential steps or priorities
+- Wrap file paths, function names, CLI commands, and variable names in \`inline code\`
+- Use \`file.ts:123\` format when referencing specific lines
+- Use **bold** for key terms, names, or emphasis
+- Keep paragraphs short — 1-3 sentences max
+- Lead with a one-line summary, then expand with sections
+- Drop the headers entirely for tiny answers (one sentence or less)
+
+`;
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Text-like MIME types whose content should be inlined directly into the prompt
@@ -372,19 +401,7 @@ export async function startJob(jobId: string): Promise<void> {
     const repoMap = buildRepoMap(worktreePath);
     const effortNote = job.effort ? `Apply ${job.effort} reasoning effort to this task.\n\n` : "";
     const resumeNote = resumeId ? `You are continuing work on this project in a new worktree at: ${worktreePath}\n\n` : "";
-    const replyFormat = `When you finish a task or respond to the user, structure your reply using these sections with markdown headers:
-
-## What happened
-Briefly explain what you did and why.
-
-## What changed
-List the files and key changes you made. Use bullet points.
-
-## What's next
-State what needs to happen now — any follow-up steps, things to test, or decisions needed.
-
-Keep each section concise. Skip a section only if it truly doesn't apply (e.g. no files changed).\n\n`;
-    const systemContext = `${baseRules}${claudeHint}${effortNote}${resumeNote}${replyFormat}${repoMap}\n---\n\n`;
+    const systemContext = `${baseRules}${claudeHint}${effortNote}${resumeNote}${REPLY_FORMAT}${repoMap}\n---\n\n`;
 
     const promptWithImages = buildMessageWithAttachments(job.prompt, job.images, worktreePath);
     let turn = await session.sendMessage(systemContext + promptWithImages);
@@ -400,7 +417,7 @@ Keep each section concise. Skip a section only if it truly doesn't apply (e.g. n
       activeSessions.set(jobId, session);
       session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(warn(`save sessionId for ${jobId}`)); });
       session.onChunk((text) => emitOutput(jobId, text));
-      const freshContext = `${baseRules}${claudeHint}${effortNote}${replyFormat}${repoMap}\n---\n\n`;
+      const freshContext = `${baseRules}${claudeHint}${effortNote}${REPLY_FORMAT}${repoMap}\n---\n\n`;
       turn = await session.sendMessage(freshContext + promptWithImages);
       await updateUsage(jobId, turn.inputTokens, turn.outputTokens, turn.costUsd);
     }
