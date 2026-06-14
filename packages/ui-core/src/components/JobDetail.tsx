@@ -51,6 +51,8 @@ function lineClass(type: LineType): string {
 
 export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
   const job = useJob(jobId);
+  const outputScrollRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
@@ -146,10 +148,22 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
   const lastToolLine = [...lines].reverse().find((l) => l.startsWith("\x00tool\x00") || l.startsWith("\x00bash\x00"));
   const activeTool = isRunning && lastToolLine ? lastToolLine.slice(7) : null;
 
+  // Auto-scroll only when user is near the bottom (not scrolled up reading history)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [output, messages]);
+    if (activeTab === "output" && outputScrollRef.current) {
+      const el = outputScrollRef.current;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      if (nearBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [output, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "chat" && chatScrollRef.current) {
+      const el = chatScrollRef.current;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      if (nearBottom) chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, activeTab]);
 
   const canChat = !!job && !isPending && !isPlanReview;
 
@@ -359,7 +373,7 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
         </div>
 
         {activeTab === "output" && (
-          <div className="flex-1 overflow-y-auto bg-surface-deep p-4 min-h-0">
+          <div ref={outputScrollRef} className="flex-1 overflow-y-auto bg-surface-deep p-4 min-h-0">
             {output ? (
               <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
                 {output.split("\n").map((raw, i) => {
@@ -381,7 +395,7 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
           </div>
         )}
         {activeTab === "chat" && (
-          <div className="flex-1 overflow-y-auto bg-concrete px-4 py-4 min-h-0">
+          <div ref={chatScrollRef} className="flex-1 overflow-y-auto bg-concrete px-4 py-4 min-h-0">
             <div className="max-w-[820px] mx-auto">
               <CheckpointsBar jobId={jobId} refreshKey={`${job.status}-${messages.length}`} />
               <ActivityTimeline
@@ -402,7 +416,7 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
                 }}
               />
             </div>
-            <div ref={bottomRef} />
+            <div ref={chatBottomRef} />
           </div>
         )}
       </div>
