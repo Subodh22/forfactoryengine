@@ -165,6 +165,15 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
     }
   }, [messages, activeTab]);
 
+  /* scroll to bottom when the chat tab becomes active (including first mount) */
+  useEffect(() => {
+    if (activeTab === "chat") {
+      requestAnimationFrame(() => {
+        chatBottomRef.current?.scrollIntoView({ behavior: "instant" });
+      });
+    }
+  }, [activeTab]);
+
   const canChat = !!job && !isPending && !isPlanReview;
 
   async function handleRedo(e: React.FormEvent) {
