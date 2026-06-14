@@ -146,12 +146,23 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
     setJobs((j) => j.filter((x) => x.id !== id));
   }, []);
 
+  const onOutput = useCallback(
+    (jobId: string, cb: (chunk: string) => void) => addListener(outputListeners.current, jobId, cb),
+    [],
+  );
+  const onChat = useCallback(
+    (jobId: string, cb: (msg: ChatMsg) => void) => addListener(chatListeners.current, jobId, cb),
+    [],
+  );
+  const onTerm = useCallback(
+    (sessionId: string, cb: (text: string) => void) => addListener(termListeners.current, sessionId, cb),
+    [],
+  );
+
   const value = useMemo<FactoryCtx>(() => ({
     ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob, dropJob,
-    onOutput: (jobId, cb) => addListener(outputListeners.current, jobId, cb),
-    onChat: (jobId, cb) => addListener(chatListeners.current, jobId, cb),
-    onTerm: (sessionId, cb) => addListener(termListeners.current, sessionId, cb),
-  }), [ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, addJob, dropJob]);
+    onOutput, onChat, onTerm,
+  }), [ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, addJob, dropJob, onOutput, onChat, onTerm]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
