@@ -140,9 +140,13 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
             Model
             <select value={model} onChange={(e) => setModel(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
               <option value="">Default</option>
-              <option value="opus">Opus</option>
-              <option value="sonnet">Sonnet</option>
-              <option value="haiku">Haiku</option>
+              <option value="claude-opus-4-6">Opus 4.6</option>
+              <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+              <option value="claude-sonnet-4-5-20250514">Sonnet 4.5</option>
+              <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+              <option value="opus">Opus (latest)</option>
+              <option value="sonnet">Sonnet (latest)</option>
+              <option value="haiku">Haiku (latest)</option>
             </select>
           </label>
           <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
