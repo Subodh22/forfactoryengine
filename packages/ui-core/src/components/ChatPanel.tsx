@@ -303,7 +303,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
             {/* Effort selector */}
             <div className="relative" ref={effortMenuRef}>
               <button
-                onClick={() => { setShowEffortMenu((v) => !v); setShowModelMenu(false); }}
+                onClick={() => { setShowEffortMenu((v) => !v); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-md font-data text-[11px] text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
               >
                 <Zap className="w-3 h-3" />
