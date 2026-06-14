@@ -96,58 +96,32 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
       {mode === "plan" ? (
         <PlanBuilder projectId={projectId} />
       ) : (
-      <div className="bg-paper border border-[#332f28] brutal-shadow grid-bg">
-        <div className="flex justify-between items-center px-5 py-4 border-b border-[#332f28] bg-paper">
-          <b className="font-display uppercase text-[15px]">New Job — {project?.name ?? "…"}</b>
-          <div className="flex items-center gap-2">
-            <button
-              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${delegate ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"}`}
-              onClick={() => setDelegate((v) => !v)}
-              title="Delegate: plan the task and split it into parallel sub-agents, merged into one PR"
-            >
-              <span className={`w-[7px] h-[7px] ${delegate ? "bg-[#e0a32e]" : "bg-[#888]"}`} />
-              Delegate {delegate ? "on" : "off"}
-            </button>
-            <button
-              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${autoRun ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"} ${delegate ? "opacity-40 pointer-events-none" : ""}`}
-              onClick={() => setAutoRun((v) => !v)}
-              title="Auto-run: start executing immediately after creating"
-            >
-              <span className={`w-[7px] h-[7px] ${autoRun ? "bg-[#3bd16f]" : "bg-[#888]"}`} />
-              Auto-run {autoRun ? "on" : "off"}
-            </button>
+      <div className="bg-paper border-2 border-[#332f28] brutal-shadow">
+        <div className="p-6 pb-0">
+          <div className="flex justify-between items-start mb-5">
+            <b className="font-display uppercase text-[17px] tracking-wide">New Job — {project?.name ?? "…"}</b>
+            <div className="flex items-center gap-2">
+              <button
+                className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${delegate ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"}`}
+                onClick={() => setDelegate((v) => !v)}
+                title="Delegate: plan the task and split it into parallel sub-agents, merged into one PR"
+              >
+                <span className={`w-[7px] h-[7px] ${delegate ? "bg-[#e0a32e]" : "bg-[#888]"}`} />
+                Delegate {delegate ? "on" : "off"}
+              </button>
+              <button
+                className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${autoRun ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"} ${delegate ? "opacity-40 pointer-events-none" : ""}`}
+                onClick={() => setAutoRun((v) => !v)}
+                title="Auto-run: start executing immediately after creating"
+              >
+                <span className={`w-[7px] h-[7px] ${autoRun ? "bg-[#3bd16f]" : "bg-[#888]"}`} />
+                Auto-run {autoRun ? "on" : "off"}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-[#332f28] bg-paper">
-          <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
-            Model
-            <select value={model} onChange={(e) => setModel(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
-              <option value="">Default</option>
-              <option value="claude-opus-4-6">Opus 4.6</option>
-              <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-              <option value="claude-sonnet-4-5-20250514">Sonnet 4.5</option>
-              <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-              <option value="opus">Opus (latest)</option>
-              <option value="sonnet">Sonnet (latest)</option>
-              <option value="haiku">Haiku (latest)</option>
-            </select>
-          </label>
-          <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
-            Effort
-            <select value={effort} onChange={(e) => setEffort(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
-              <option value="">Default</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="max">Max</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="p-5 bg-paper">
           {attachments.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-3">
+            <div className="flex gap-2 flex-wrap mb-4">
               {attachments.map((src, i) => <AttachmentPreview key={i} src={src} onRemove={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} />)}
             </div>
           )}
@@ -156,26 +130,51 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            placeholder="Describe what you want to build or change…  (paste or drop files, Cmd+Enter to send)"
-            className="w-full min-h-[150px] resize-y border border-[#332f28] bg-concrete p-3.5 font-mono text-[13px] text-ink leading-[1.5] placeholder:text-muted focus:outline-none focus:bg-[#dfdcd4] focus:shadow-[inset_0_0_0_3px_var(--ink)] transition-shadow"
+            autoFocus
+            placeholder="Describe what you want to build or change..."
+            className="w-full min-h-[220px] resize-y border-2 border-[#332f28] bg-concrete p-5 font-mono text-[14px] text-ink leading-[1.7] placeholder:text-muted/60 placeholder:text-[14px] focus:outline-none focus:bg-[#dfdcd4] focus:border-ink focus:shadow-[4px_4px_0_0_var(--ink)] transition-all"
           />
         </div>
 
-        <div className="flex justify-between items-center px-5 py-4 border-t border-[#332f28] bg-paper">
-          <div className="flex items-center gap-3">
-            <button className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b border-[#332f28] pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors" onClick={() => fileRef.current?.click()}>
-              <Paperclip className="w-3.5 h-3.5" />Attach files
+        <div className="flex justify-between items-center px-6 py-4 mt-2">
+          <div className="flex items-center gap-4">
+            <button className="font-data text-[11px] uppercase flex items-center gap-1.5 text-ink/60 hover:text-ink transition-colors" onClick={() => fileRef.current?.click()}>
+              <Paperclip className="w-4 h-4" />Attach
             </button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
+            <span className="text-[1px]">|</span>
+            <label className="font-data text-[11px] uppercase flex items-center gap-1.5 text-ink/60">
+              Model
+              <select value={model} onChange={(e) => setModel(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
+                <option value="">Default</option>
+                <option value="claude-opus-4-6">Opus 4.6</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+                <option value="claude-sonnet-4-5-20250514">Sonnet 4.5</option>
+                <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+                <option value="opus">Opus (latest)</option>
+                <option value="sonnet">Sonnet (latest)</option>
+                <option value="haiku">Haiku (latest)</option>
+              </select>
+            </label>
+            <label className="font-data text-[11px] uppercase flex items-center gap-1.5 text-ink/60">
+              Effort
+              <select value={effort} onChange={(e) => setEffort(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
+                <option value="">Default</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="max">Max</option>
+              </select>
+            </label>
           </div>
-          <button onClick={submit} disabled={!prompt.trim() || loading} className="font-display uppercase text-[14px] bg-ink text-paper px-7 py-3 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none">
-            {delegate ? "Delegate" : autoRun ? "Run" : "Queue"} <Play className="w-3.5 h-3.5" />
+          <button onClick={submit} disabled={!prompt.trim() || loading} className="font-display uppercase text-[14px] bg-ink text-paper px-8 py-3.5 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none">
+            {delegate ? "Delegate" : autoRun ? "Run" : "Queue"} <Play className="w-4 h-4" />
           </button>
         </div>
       </div>
       )}
       {mode === "describe" && (
-        <p className="font-data text-[10px] text-muted mt-3.5 uppercase text-right">or paste / drag-drop · Cmd+Enter to send</p>
+        <p className="font-data text-[10px] text-muted mt-3 uppercase text-right tracking-wide">paste / drag-drop images · Cmd+Enter to send</p>
       )}
     </div>
   );
