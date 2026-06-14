@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
-import { Paperclip, Play, Monitor, MessageSquare, ListTree } from "lucide-react";
+import { Paperclip, Play, MessageSquare, ListTree } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
 import { PlanBuilder } from "@/components/PlanBuilder";
@@ -33,22 +33,6 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
     if (skipped.length) toast.error(`Too large to attach: ${skipped.join(", ")}`);
   }, []);
 
-  const captureScreen = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const track = stream.getVideoTracks()[0];
-      const video = document.createElement("video");
-      video.srcObject = stream;
-      await video.play();
-      await new Promise((r) => requestAnimationFrame(r));
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext("2d")!.drawImage(video, 0, 0);
-      track.stop();
-      setAttachments((prev) => [...prev, canvas.toDataURL("image/png")]);
-    } catch { /* cancelled */ }
-  }, []);
 
   function onPaste(e: React.ClipboardEvent) {
     const files = Array.from(e.clipboardData.files);
@@ -179,9 +163,6 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
               <Paperclip className="w-3.5 h-3.5" />Attach files
             </button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
-            <button className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b border-[#332f28] pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors" onClick={captureScreen}>
-              <Monitor className="w-3.5 h-3.5" />Screenshot
-            </button>
           </div>
           <button onClick={submit} disabled={!prompt.trim() || loading} className="font-display uppercase text-[14px] bg-ink text-paper px-7 py-3 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none">
             {delegate ? "Delegate" : autoRun ? "Run" : "Queue"} <Play className="w-3.5 h-3.5" />
