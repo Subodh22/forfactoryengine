@@ -27,6 +27,7 @@ function optimisticJob(id: string, projectId: string, parentJobId: string, prior
     pushState: "" as const, pushAttempts: 0, pushError: "", pushedSha: "", pushedTo: "",
     deployState: "" as const, deployUrl: "", deployId: "", deployTarget: "", deployError: "", deployFixAttempts: 0,
     ciStatus: "" as const, ciRunUrl: "", ciAttempts: 0,
+    archived: false,
     startedAt: 0, completedAt: 0, createdAt: Date.now(),
   };
 }
