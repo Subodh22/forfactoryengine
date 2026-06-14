@@ -32,6 +32,7 @@ interface FactoryCtx {
   setGhLogin: (s: string) => void;
   addJob: (job: Job) => void;
   dropJob: (id: string) => void;
+  patchLocalJob: (id: string, patch: Partial<Job>) => void;
   onOutput: (jobId: string, cb: (chunk: string) => void) => () => void;
   onChat: (jobId: string, cb: (msg: ChatMsg) => void) => () => void;
   onTerm: (sessionId: string, cb: (text: string) => void) => () => void;
@@ -145,6 +146,10 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
   const dropJob = useCallback((id: string) => {
     setJobs((j) => j.filter((x) => x.id !== id));
   }, []);
+  // Optimistically patch a job in local state (e.g. archive before server confirms).
+  const patchLocalJob = useCallback((id: string, patch: Partial<Job>) => {
+    setJobs((j) => j.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }, []);
 
   const onOutput = useCallback(
     (jobId: string, cb: (chunk: string) => void) => addListener(outputListeners.current, jobId, cb),
@@ -160,9 +165,9 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<FactoryCtx>(() => ({
-    ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob, dropJob,
+    ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, setGhLogin, addJob, dropJob, patchLocalJob,
     onOutput, onChat, onTerm,
-  }), [ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, addJob, dropJob, onOutput, onChat, onTerm]);
+  }), [ready, needToken, live, wsEpoch, projects, jobs, ghLogin, ghOAuth, addJob, dropJob, patchLocalJob, onOutput, onChat, onTerm]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -128,7 +128,7 @@ function ProjectTree({
   onNewWorkspace: (projectId: string) => void;
   onSettings: (projectId: string) => void;
 }) {
-  const { dropJob } = useFactory();
+  const { patchLocalJob } = useFactory();
   const jobs = useJobs(project.id);
   const workspaces: Job[] = [...jobs.filter((j) => !j.parentJobId && !j.archived)]
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -186,7 +186,7 @@ function ProjectTree({
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
-                    dropJob(ws.id);
+                    patchLocalJob(ws.id, { archived: true });
                     try {
                       await archiveJob(ws.id);
                       toast.success("Workspace archived");
