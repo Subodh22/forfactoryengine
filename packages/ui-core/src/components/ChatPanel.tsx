@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Plus, Monitor, MessageSquare, ListTree, Send,
-  Sparkles, Zap, ChevronDown,
+  Sparkles, Zap, ChevronDown, ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
@@ -41,6 +41,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   const [attachments, setAttachments] = useState<string[]>([]);
   const [autoRun, setAutoRun] = useState(true);
   const [delegate, setDelegate] = useState(false);
+  const [planFirst, setPlanFirst] = useState(false);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
   const [loading, setLoading] = useState(false);
@@ -113,18 +114,28 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
     setLoading(true);
     try {
       const title = prompt.slice(0, 80).trim();
+      // Plan-first uses the guided epic flow: Claude clarifies, proposes a plan,
+      // and waits at "plan_review" for your Approve & Build (needsApproval). It's
+      // an epic either way, so kind=epic when planning-first or delegating.
+      const isEpic = delegate || planFirst;
       const job = await createJob({
         projectId,
         title,
         prompt: prompt.trim(),
         images: attachments,
-        kind: delegate ? "epic" : undefined,
+        kind: isEpic ? "epic" : undefined,
+        needsApproval: planFirst || undefined,
         model: model || undefined,
         effort: effort || undefined,
-        autoRun: autoRun || delegate,
+        autoRun: autoRun || isEpic,
       });
       addJob(job);
-      toast.success(delegate ? "Epic queued — the engine will plan it" : autoRun ? "Queued — the engine will run it" : "Job created");
+      toast.success(
+        planFirst ? "Planning — review the plan, then Approve & Build"
+        : delegate ? "Epic queued — the engine will plan it"
+        : autoRun ? "Queued — the engine will run it"
+        : "Job created",
+      );
       onJobCreated?.(job.id);
       setPrompt("");
       setAttachments([]);
@@ -230,6 +241,15 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
               <Sparkles className="w-3 h-3" />
             </button>
 
+            {/* Plan-first toggle — Claude proposes a plan you approve before it builds */}
+            <button
+              onClick={() => setPlanFirst((v) => !v)}
+              title="Plan first — Claude proposes a plan you review & approve before it builds"
+              className={`flex items-center gap-1 px-2 py-1 rounded-md font-data text-[11px] transition-colors ${planFirst ? "text-[#b8860b] bg-[#b8860b]/10" : "text-muted hover:text-ink hover:bg-concrete-2"}`}
+            >
+              <ClipboardList className="w-3 h-3" />
+            </button>
+
             {/* Effort selector */}
             <div className="relative" ref={effortMenuRef}>
               <button
@@ -308,7 +328,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
           Auto-run {autoRun ? "on" : "off"}
         </button>
         <span className="font-data text-[10px] text-muted/40">
-          {delegate ? "Delegate mode" : "Cmd+Enter to send"}
+          {planFirst ? "Plan-first mode" : delegate ? "Delegate mode" : "Cmd+Enter to send"}
         </span>
       </div>
     </div>

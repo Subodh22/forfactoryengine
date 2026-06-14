@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench, GitMerge, X } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench, GitMerge, X, Check } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
@@ -13,7 +13,7 @@ import { MentionInput } from "./MentionInput";
 import { Markdown } from "./Markdown";
 import { CheckpointsBar } from "./CheckpointsBar";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob, approvePlan } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -105,6 +105,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
   const [pushing, setPushing] = useState(false);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState("");
+  const [approving, setApproving] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const addFiles = useCallback(async (files: FileList | File[], target: React.Dispatch<React.SetStateAction<string[]>> = setAttachedFiles) => {
@@ -423,6 +424,34 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
       </div>
 
       {isEpic && <DelegatorPanel epicId={jobId} />}
+
+      {job?.status === "plan_review" && (
+        <div className="border-t border-[#b8860b]/60 bg-[#b8860b]/15 flex-shrink-0 px-4 py-3 flex items-center justify-between gap-3">
+          <span className="font-data text-[10px] uppercase text-[#b8860b] font-bold min-w-0">Plan ready — review it in Chat, then build</span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={async () => { if (window.confirm("Discard this plan and cancel the job?")) { await cancelEpic(jobId); toast.info("Plan discarded"); } }}
+              className="px-2.5 py-1 rounded-md font-data text-[10px] uppercase border border-[#332f28] text-muted hover:text-ink transition-colors"
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              disabled={approving}
+              onClick={async () => {
+                setApproving(true);
+                try { await approvePlan(jobId); toast.success("Approved — building now"); }
+                catch (err) { toast.error(String(err instanceof Error ? err.message : err) || "Could not approve the plan"); }
+                finally { setApproving(false); }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md font-data text-[10px] uppercase bg-[#4ade80] text-[#0a1f12] font-bold hover:brightness-110 transition-all disabled:opacity-40"
+            >
+              <Check className="w-3 h-3" /> {approving ? "Starting…" : "Approve & Build"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {canChat && (
         <div className={`border-t flex-shrink-0 ${isWaiting ? "border-[#b8860b]/40 bg-[#1a1714]" : "border-[#2a2722] bg-[#1a1714]"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
