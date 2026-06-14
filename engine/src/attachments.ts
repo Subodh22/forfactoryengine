@@ -5,7 +5,7 @@
 // parameter so the name survives into Claude's worktree.
 
 // Attachments are stored as base64 inside the DB; guard very large files.
-export const MAX_ATTACHMENT_BYTES = 5_000_000;
+export const MAX_ATTACHMENT_BYTES = 20_000_000;
 
 const EXT_MIME: Record<string, string> = {
   md: "text/markdown", markdown: "text/markdown", txt: "text/plain", log: "text/plain",

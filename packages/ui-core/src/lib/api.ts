@@ -65,7 +65,7 @@ export function termUrl(cwd: string, cols: number, rows: number): string {
 }
 
 // ── Client-side attachment encoding (no server round-trip needed) ────────────
-const MAX_ATTACHMENT_BYTES = 5_000_000;
+const MAX_ATTACHMENT_BYTES = 20_000_000;
 
 const EXT_MIME: Record<string, string> = {
   md: "text/markdown", markdown: "text/markdown", txt: "text/plain", log: "text/plain",
