@@ -1,6 +1,6 @@
 "use client";
 import { useState, useCallback, useRef } from "react";
-import { X } from "lucide-react";
+import { X, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ProjectBoard } from "@/components/ProjectBoard";
 import { ProjectTabs } from "@/components/ProjectTabs";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -146,6 +146,7 @@ export function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(248);
   const [dockWidth, setDockWidth] = useState(0); // 0 = use default percentage
+  const [dockOpen, setDockOpen] = useState(true);
 
   const handleSidebarResize = useCallback((delta: number) => {
     setSidebarWidth((w) => Math.max(180, Math.min(400, w + delta)));
@@ -285,12 +286,22 @@ export function App() {
         )}
 
         {/* Center pane */}
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-concrete">
+        <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-concrete relative">
           {selectedJob ? <WorkspaceView jobId={selectedJob} onRedo={openJob} onDelete={() => setSelectedJob(null)} /> : <CenterContent />}
+          {/* Dock toggle button */}
+          {selectedJob && breadcrumbProject && (
+            <button
+              onClick={() => setDockOpen((o) => !o)}
+              className="hidden lg:flex absolute top-[5px] right-2 z-10 items-center justify-center w-7 h-7 rounded-md text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
+              title={dockOpen ? "Hide side panel" : "Show side panel"}
+            >
+              {dockOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+            </button>
+          )}
         </main>
 
         {/* Right dock — only for a selected workspace */}
-        {selectedJob && breadcrumbProject && (
+        {selectedJob && breadcrumbProject && dockOpen && (
           <>
             <ResizeHandle onResize={handleDockResize} side="right" />
             <RightDock jobId={selectedJob} project={{ name: breadcrumbProject.name, localPath: breadcrumbProject.localPath, setupScript: breadcrumbProject.setupScript, runScript: breadcrumbProject.runScript }} width={dockWidth || undefined} />
