@@ -101,6 +101,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
   const [redoing, setRedoing] = useState(false);
   const redoFileInputRef = useRef<HTMLInputElement>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [pushing, setPushing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const addFiles = useCallback(async (files: FileList | File[], target: React.Dispatch<React.SetStateAction<string[]>> = setAttachedFiles) => {
@@ -257,24 +258,8 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
               <Square className="w-2.5 h-2.5" />{cancelling ? "Cancelling…" : "Cancel"}
             </button>
           )}
-          {isFinished && !job.pushState && job.worktreePath && (
-            <button
-              onClick={async () => {
-                try {
-                  await retryPush(job.id);
-                  toast.info("Pushing — watch the push chip");
-                } catch (err) {
-                  toast.error(String(err instanceof Error ? err.message : err) || "Failed to push");
-                }
-              }}
-              className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors"
-              title="Push this job's changes to the remote"
-            >
-              <UploadCloud className="w-2.5 h-2.5" />Push to Main
-            </button>
-          )}
           {isFinished && (
-            <button onClick={() => setRedoOpen((o) => !o)} className={`flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors ${!job.pushState || !job.worktreePath ? "ml-auto" : ""}`} title="Re-run this job from scratch">
+            <button onClick={() => setRedoOpen((o) => !o)} className="flex items-center gap-1 px-2 py-0.5 ml-auto font-data text-[10px] uppercase border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors" title="Re-run this job from scratch">
               <RotateCcw className="w-2.5 h-2.5" />Redo
             </button>
           )}
@@ -448,6 +433,27 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
+            {isFinished && !job.pushState && job.worktreePath && (
+              <button
+                type="button"
+                disabled={pushing}
+                onClick={async () => {
+                  setPushing(true);
+                  try {
+                    await retryPush(job.id);
+                    toast.info("Pushing — watch the push chip");
+                  } catch (err) {
+                    toast.error(String(err instanceof Error ? err.message : err) || "Failed to push");
+                  } finally {
+                    setPushing(false);
+                  }
+                }}
+                className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0 disabled:opacity-40"
+                title="Push to main"
+              >
+                <UploadCloud className="w-3.5 h-3.5" />
+              </button>
+            )}
             <MentionInput
               jobId={jobId}
               value={reply}
