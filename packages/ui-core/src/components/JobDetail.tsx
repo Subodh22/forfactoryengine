@@ -5,6 +5,7 @@ import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Chev
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
+import { MainBadge } from "./MainBadge";
 import { DelegatorPanel } from "./DelegatorPanel";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { DiffViewer } from "./DiffViewer";
@@ -200,6 +201,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
             <StatusBadge status={job.status} />
             <PushChip job={job} />
             <DeployChip job={job} />
+            <MainBadge job={job} />
           </div>
         </div>
         <p className={`font-data text-[11px] text-muted mb-3 whitespace-pre-wrap ${isPending ? "" : "line-clamp-2"}`}>{job.prompt}</p>
