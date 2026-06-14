@@ -112,6 +112,11 @@ export const appendPrompt = (id: string, text: string, images?: string[]) =>
 
 export const cancelJob = (id: string) => api<Job>(`/api/jobs/${id}/cancel`, { method: "POST" });
 export const cancelEpic = (id: string) => api<Job>(`/api/jobs/${id}/cancel-epic`, { method: "POST" });
+export const archiveJob = (id: string) =>
+  afterCreate(id).then(() => api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify({ archived: true }) }));
+export const unarchiveJob = (id: string) =>
+  afterCreate(id).then(() => api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify({ archived: false }) }));
+
 export const removeJob = (id: string) => afterCreate(id).then(() => api(`/api/jobs/${id}`, { method: "DELETE" }));
 // Delete a task and its whole subtree (no DB cascade exists server-side).
 export const removeJobCascade = (id: string) => afterCreate(id).then(() => api(`/api/jobs/${id}?cascade=1`, { method: "DELETE" }));

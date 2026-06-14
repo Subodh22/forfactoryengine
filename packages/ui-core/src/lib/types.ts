@@ -71,6 +71,7 @@ export interface Job {
   outputTokens: number;
   costUsd: number;
   mergedToMain: boolean;
+  archived: boolean;
   startedAt: number;
   completedAt: number;
   createdAt: number;

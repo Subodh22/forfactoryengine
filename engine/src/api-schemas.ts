@@ -42,6 +42,7 @@ export const PatchJobBodySchema = z.object({
   assignee: JobAssigneeSchema.optional(),
   priority: z.number().finite().optional(),
   parentJobId: z.string().optional(),
+  archived: z.boolean().optional(),
 });
 export type PatchJobBody = z.infer<typeof PatchJobBodySchema>;
 

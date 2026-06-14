@@ -516,6 +516,7 @@ export function startServer(port: number): http.Server {
           if (typeof b.prompt === "string") fields.prompt = b.prompt;
           if (typeof b.assignee === "string") fields.assignee = b.assignee;
           if (typeof b.priority === "number") fields.priority = b.priority;
+          if (typeof b.archived === "boolean") fields.archived = b.archived;
           if (typeof b.parentJobId === "string") {
             // Re-parent (indent / outdent). Guard against self-parenting,
             // cycles, and moving a task that's mid-flight.

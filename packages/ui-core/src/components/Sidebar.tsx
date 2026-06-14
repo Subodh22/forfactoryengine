@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
-import { LayoutGrid, Clock, Plus, ChevronRight, GitMerge, Folder, Settings, Trash2, Check, Loader2, CircleDot, AlertCircle, Pause, X } from "lucide-react";
+import { LayoutGrid, Clock, Plus, ChevronRight, GitMerge, Folder, Settings, Trash2, Archive, Check, Loader2, CircleDot, AlertCircle, Pause, X } from "lucide-react";
 import { toast } from "sonner";
-import { removeJobCascade } from "@/lib/mutations";
+import { removeJobCascade, archiveJob } from "@/lib/mutations";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { UsagePanel } from "@/components/UsagePanel";
 import { useJobs, useProjects } from "@/lib/data";
@@ -129,7 +129,7 @@ function ProjectTree({
   onSettings: (projectId: string) => void;
 }) {
   const jobs = useJobs(project.id);
-  const workspaces: Job[] = [...jobs.filter((j) => !j.parentJobId)]
+  const workspaces: Job[] = [...jobs.filter((j) => !j.parentJobId && !j.archived)]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 40);
 
@@ -177,16 +177,31 @@ function ProjectTree({
                 <button
                   onClick={() => onSelectJob(ws.id)}
                   title={ws.title}
-                  className="flex items-center gap-2 pl-2 pr-1.5 py-1 text-left min-w-0 flex-1 overflow-hidden"
+                  className="flex items-start gap-2 pl-2 pr-1.5 py-1 text-left min-w-0 flex-1 overflow-hidden"
                 >
                   <StatusIcon status={ws.status} merged={ws.mergedToMain} />
-                  <span className={`text-[12.5px] truncate min-w-0 flex-1 ${ws.status === "completed" && ws.mergedToMain ? "text-muted line-through decoration-muted/30" : ""}`}>{ws.title || "Untitled"}</span>
+                  <span className={`text-[12.5px] line-clamp-2 min-w-0 flex-1 ${ws.status === "completed" && ws.mergedToMain ? "text-muted line-through decoration-muted/30" : ""}`}>{ws.title || "Untitled"}</span>
                   {(ws.status === "running" || ws.status === "delegating") && (
                     <span className="flex-shrink-0 font-data text-[9px] tracking-wider uppercase text-ink/50 px-1 py-0.5 rounded bg-ink/8">RUN</span>
                   )}
                   {ws.status === "completed" && ws.mergedToMain && (
                     <span className="flex-shrink-0 font-data text-[9px] tracking-wider uppercase text-ink/40 px-1 py-0.5 rounded bg-ink/8">MRG</span>
                   )}
+                </button>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await archiveJob(ws.id);
+                      toast.success("Workspace archived");
+                    } catch {
+                      toast.error("Failed to archive workspace");
+                    }
+                  }}
+                  title="Archive workspace"
+                  className="opacity-0 group-hover/ws:opacity-100 text-muted hover:text-[#b08a3e] transition-opacity flex-shrink-0 p-1"
+                >
+                  <Archive className="w-3 h-3" />
                 </button>
                 <button
                   onClick={async (e) => {

@@ -115,6 +115,7 @@ export interface Job {
   outputTokens: number;
   costUsd: number;
   mergedToMain: boolean;
+  archived: boolean;
   startedAt: number;
   completedAt: number;
   createdAt: number;
@@ -231,6 +232,7 @@ export async function initSchema(): Promise<void> {
     ["completed_at", "INTEGER NOT NULL DEFAULT 0"],
     ["assignee", "TEXT NOT NULL DEFAULT ''"],
     ["commit_sha", "TEXT NOT NULL DEFAULT ''"],
+    ["archived", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [col, def] of jobCols) {
     try { await db.execute(`ALTER TABLE jobs ADD COLUMN ${col} ${def}`); } catch { /* exists */ }
@@ -441,6 +443,7 @@ function rowToJob(r: Row): Job {
     outputTokens: Number(r.output_tokens ?? 0),
     costUsd: Number(r.cost_usd ?? 0),
     mergedToMain: Boolean(Number(r.merged_to_main ?? 0)),
+    archived: Boolean(Number(r.archived ?? 0)),
     startedAt: Number(r.started_at ?? 0),
     completedAt: Number(r.completed_at ?? 0),
     createdAt: Number(r.created_at),
@@ -519,6 +522,7 @@ export async function createJob(input: {
     outputTokens: 0,
     costUsd: 0,
     mergedToMain: false,
+    archived: false,
     startedAt: 0,
     completedAt: 0,
     createdAt: Date.now(),
@@ -548,6 +552,7 @@ const JOB_COLUMNS: Record<string, string> = {
   startedAt: "started_at", completedAt: "completed_at", inputTokens: "input_tokens",
   outputTokens: "output_tokens", costUsd: "cost_usd", assignee: "assignee",
   mergedToMain: "merged_to_main",
+  archived: "archived",
 };
 const JOB_JSON_COLUMNS: Record<string, string> = {
   images: "images", touchedPaths: "touched_paths", blockedBy: "blocked_by",

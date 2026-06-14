@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Save, Play, TerminalSquare, Loader2 } from "lucide-react";
+import { Save, Play, TerminalSquare, Loader2, ArchiveRestore, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useProject } from "@/lib/data";
-import { updateProject } from "@/lib/mutations";
+import { useProject, useJobs } from "@/lib/data";
+import { updateProject, unarchiveJob, removeJobCascade } from "@/lib/mutations";
 import { VercelConnect } from "@/components/VercelConnect";
 
 // Per-project settings: the setup script (runs once when a job's worktree is
@@ -98,8 +98,65 @@ export function ProjectSettings({ projectId }: { projectId: string }) {
         {saving ? "Saving…" : "Save settings"}
       </button>
 
+      <ArchivedWorkspaces projectId={projectId} />
+
       <div className="border-t border-[#332f28] pt-6">
         <VercelConnect />
+      </div>
+    </div>
+  );
+}
+
+function ArchivedWorkspaces({ projectId }: { projectId: string }) {
+  const jobs = useJobs(projectId);
+  const archived = jobs.filter((j) => !j.parentJobId && j.archived)
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  if (archived.length === 0) return null;
+
+  return (
+    <div className="border-t border-[#332f28] pt-6 space-y-3">
+      <h3 className="font-data text-[11px] tracking-[1.5px] uppercase text-muted">
+        Archived workspaces ({archived.length})
+      </h3>
+      <div className="space-y-1">
+        {archived.map((ws) => (
+          <div
+            key={ws.id}
+            className="group flex items-center gap-2 px-3 py-2 rounded-md border border-[#332f28] bg-paper"
+          >
+            <span className="text-[12.5px] text-ink/60 min-w-0 flex-1 line-clamp-1">{ws.title || "Untitled"}</span>
+            <button
+              onClick={async () => {
+                try {
+                  await unarchiveJob(ws.id);
+                  toast.success("Workspace restored");
+                } catch {
+                  toast.error("Failed to restore workspace");
+                }
+              }}
+              title="Restore workspace"
+              className="text-muted hover:text-[#4ade80] transition-colors flex-shrink-0 p-1"
+            >
+              <ArchiveRestore className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={async () => {
+                if (!window.confirm(`Permanently delete "${ws.title || "Untitled"}"? This cannot be undone.`)) return;
+                try {
+                  await removeJobCascade(ws.id);
+                  toast.success("Workspace deleted");
+                } catch {
+                  toast.error("Failed to delete workspace");
+                }
+              }}
+              title="Delete permanently"
+              className="text-muted hover:text-[#f4604f] transition-colors flex-shrink-0 p-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );
