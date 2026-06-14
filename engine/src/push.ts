@@ -436,12 +436,18 @@ export async function finalizeJobPush(jobId: string, project: Project, worktreeP
 }
 
 /** RETRY PUSH (POST /api/jobs/:id/retry-push): re-run the push pipeline from
- *  the kept worktree — no agent re-run. Cleans the worktree up on success. */
+ *  the kept worktree — no agent re-run. Cleans the worktree up on success.
+ *  Also serves as the initial "Push to Main" trigger when a completed job has
+ *  pushState="" (agent finished but push was never attempted or was skipped). */
 export async function retryPush(jobId: string): Promise<PushOutcome> {
   const job = await getJob(jobId);
   if (!job) return { ok: false, error: "job not found" };
-  if (job.pushState === "pushing") return { ok: false, error: "a push is already in progress" };
-  if (job.pushState !== "needs_help") return { ok: false, error: "this job has no failed push to retry" };
+  if (job.pushState === "pushing" || job.pushState === "checking_ci" || job.pushState === "fixing_ci") {
+    return { ok: false, error: "a push is already in progress" };
+  }
+  if (job.pushState === "pushed") return { ok: false, error: "this job has already been pushed" };
+  const allowedStates: string[] = ["needs_help", ""];
+  if (!allowedStates.includes(job.pushState)) return { ok: false, error: "cannot push in current state" };
   const project = await getProject(job.projectId);
   if (!project) return { ok: false, error: "project not found" };
   if (!job.worktreePath || !fs.existsSync(job.worktreePath)) {
