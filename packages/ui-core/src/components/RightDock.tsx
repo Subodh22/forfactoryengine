@@ -1,10 +1,11 @@
 "use client";
 import { useRef, useState } from "react";
-import { FileText, GitCompare, CheckCircle2, TerminalSquare } from "lucide-react";
+import { FileText, GitCompare, CheckCircle2, TerminalSquare, Globe } from "lucide-react";
 import { DiffViewer } from "@/components/DiffViewer";
 import { TerminalTabs } from "@/components/TerminalTabs";
 import { AllFiles } from "@/components/AllFiles";
 import { Checks } from "@/components/Checks";
+import { PreviewPanel } from "@/components/PreviewPanel";
 import { useJob } from "@/lib/data";
 
 // Conductor-style right pane for a workspace: All files | Changes | Checks |
@@ -12,7 +13,7 @@ import { useJob } from "@/lib/data";
 // (kept mounted once opened so its PTYs survive tab switches). "All files" and
 // "Checks" are Phase-3/5 stubs for now.
 
-type DockTab = "files" | "changes" | "checks" | "terminal";
+type DockTab = "files" | "changes" | "checks" | "terminal" | "preview";
 
 interface Props {
   jobId: string;
@@ -26,6 +27,7 @@ const TABS: { key: DockTab; label: string; icon: React.ReactNode }[] = [
   { key: "changes", label: "Changes", icon: <GitCompare className="w-3.5 h-3.5" /> },
   { key: "checks", label: "Checks", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   { key: "terminal", label: "Terminal", icon: <TerminalSquare className="w-3.5 h-3.5" /> },
+  { key: "preview", label: "Preview", icon: <Globe className="w-3.5 h-3.5" /> },
 ];
 
 export function RightDock({ jobId, project, width }: Props) {
@@ -34,6 +36,9 @@ export function RightDock({ jobId, project, width }: Props) {
   // Latch the terminal mounted after first visit so its shell sessions persist.
   const openedTerminal = useRef(false);
   if (tab === "terminal") openedTerminal.current = true;
+  // Keep preview iframe mounted once opened so navigation state persists.
+  const openedPreview = useRef(false);
+  if (tab === "preview") openedPreview.current = true;
 
   return (
     <div className={`hidden lg:flex flex-shrink-0 border-l border-[#332f28] flex-col overflow-hidden bg-concrete ${width ? "" : "w-[42%] min-w-[380px] max-w-[760px]"}`} style={width ? { width } : undefined}>
@@ -84,6 +89,13 @@ export function RightDock({ jobId, project, width }: Props) {
                 { label: "Shell", command: "" },
               ]}
             />
+          </div>
+        )}
+
+        {/* Preview iframe kept mounted (just hidden) once opened so nav state persists. */}
+        {openedPreview.current && (
+          <div className="absolute inset-0" style={{ display: tab === "preview" ? "block" : "none" }}>
+            <PreviewPanel deployUrl={job?.deployUrl} />
           </div>
         )}
       </div>
