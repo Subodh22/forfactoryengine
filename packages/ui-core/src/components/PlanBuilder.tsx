@@ -216,41 +216,41 @@ export function PlanBuilder({ projectId }: Props) {
   }
 
   return (
-    <div className="bg-paper border border-[#332f28] brutal-shadow grid-bg">
-      <div className="flex justify-between items-center px-5 py-4 border-b border-[#332f28] bg-paper gap-3">
-        <b className="font-display uppercase text-[15px] flex items-center gap-2"><ListTree className="w-4 h-4" /> Plan it yourself</b>
-        <div className="flex items-center gap-3">
-          <span className="font-data text-[10px] uppercase text-muted">{doneCount}/{tasks.length} done</span>
-          <div className="flex border border-[#332f28]">
+    <div className=”rounded-xl border border-[rgba(255,255,255,0.09)] bg-paper brutal-shadow overflow-hidden”>
+      <div className=”flex justify-between items-center px-4 py-3 border-b border-[rgba(255,255,255,0.06)] gap-3”>
+        <b className=”font-display text-[14px] flex items-center gap-2”><ListTree className=”w-4 h-4” /> Plan it yourself</b>
+        <div className=”flex items-center gap-3”>
+          <span className=”font-data text-[10px] text-muted”>{doneCount}/{tasks.length} done</span>
+          <div className=”flex rounded-lg border border-[rgba(255,255,255,0.09)] overflow-hidden”>
             <button
-              onClick={() => setView("list")}
-              className={`font-data text-[10px] px-2 py-1 uppercase flex items-center gap-1 transition-colors ${view === "list" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
-            ><ListIcon className="w-3 h-3" /> List</button>
+              onClick={() => setView(“list”)}
+              className={`font-data text-[10px] px-2 py-1 flex items-center gap-1 transition-colors ${view === “list” ? “bg-ink text-concrete” : “text-muted hover:text-ink hover:bg-concrete-2”}`}
+            ><ListIcon className=”w-3 h-3” /> List</button>
             <button
-              onClick={() => setView("board")}
-              className={`font-data text-[10px] px-2 py-1 uppercase flex items-center gap-1 border-l border-[#332f28] transition-colors ${view === "board" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
-            ><LayoutGrid className="w-3 h-3" /> Board</button>
+              onClick={() => setView(“board”)}
+              className={`font-data text-[10px] px-2 py-1 flex items-center gap-1 border-l border-[rgba(255,255,255,0.09)] transition-colors ${view === “board” ? “bg-ink text-concrete” : “text-muted hover:text-ink hover:bg-concrete-2”}`}
+            ><LayoutGrid className=”w-3 h-3” /> Board</button>
           </div>
         </div>
       </div>
 
-      <div className="px-5 py-3 border-b border-[#332f28] bg-paper">
+      <div className=”px-4 py-3 border-b border-[rgba(255,255,255,0.06)]”>
         <input
           value={planName}
           onChange={(e) => { setPlanName(e.target.value); nameDebounce.call(e.target.value); }}
-          placeholder="Plan name — e.g. “Ship the billing page”"
-          className="w-full border border-[#332f28] bg-concrete px-3 py-2 font-mono text-[14px] text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_3px_var(--ink)]"
+          placeholder=”Plan name — e.g. Ship the billing page”
+          className=”w-full rounded-md border border-[rgba(255,255,255,0.09)] bg-concrete px-3 py-2 font-mono text-[14px] text-ink placeholder:text-muted/60 focus:outline-none focus:border-[#b08a3e] transition-colors”
         />
       </div>
 
       {view === "board" ? (
-        <div className="p-3 bg-paper min-h-[40vh]">
+        <div className="p-3 min-h-[40vh]">
           {epicId
             ? <PlanBoard epicId={epicId} />
-            : <p className="font-data text-[10px] uppercase text-muted p-4">Add a task to start the board.</p>}
+            : <p className="font-data text-[10px] text-muted p-4">Add a task to start the board.</p>}
         </div>
       ) : (
-        <div className="p-3 bg-paper max-h-[55vh] overflow-y-auto">
+        <div className="p-3 max-h-[55vh] overflow-y-auto">
           {rows.map((r) => (
             <TaskRow
               key={r.job.id}
@@ -269,21 +269,21 @@ export function PlanBuilder({ projectId }: Props) {
           ))}
           <button
             onClick={addTopLevel}
-            className="mt-1 w-full text-left font-data text-[11px] uppercase flex items-center gap-1.5 text-muted hover:text-ink transition-colors px-1.5 py-2 border border-dashed border-[#332f28]/30 hover:border-[#332f28]"
+            className="mt-1 w-full text-left font-data text-[11px] flex items-center gap-1.5 text-muted hover:text-ink transition-colors px-1.5 py-2 rounded-md border border-dashed border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]"
           >
             <Plus className="w-3.5 h-3.5" /> Add task
           </button>
         </div>
       )}
 
-      <div className="flex justify-between items-center px-5 py-4 border-t border-[#332f28] bg-paper gap-3">
-        <p className="font-data text-[10px] uppercase text-muted">
+      <div className="flex justify-between items-center px-4 py-3 border-t border-[rgba(255,255,255,0.06)] gap-3">
+        <p className="font-data text-[10px] text-muted">
           <Bot className="w-3 h-3 inline mb-0.5" /> agent runs it · <Hand className="w-3 h-3 inline mb-0.5" /> you tick it off · ⏎ next · ⇥ indent
         </p>
         <button
           onClick={onFinish}
           disabled={!epicId || finishing}
-          className="font-display uppercase text-[13px] bg-ink text-paper px-6 py-2.5 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+          className="font-display text-[13px] bg-ink text-concrete px-5 py-2 rounded-lg inline-flex items-center gap-2 transition-all hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <Flag className="w-3.5 h-3.5" /> {finishing ? "Finishing…" : "Finish plan"}
         </button>
@@ -378,7 +378,7 @@ function TaskRow({
           onKeyDown={onKeyDown}
           onBlur={flushTitle}
           placeholder={depth === 0 ? "Task name…" : "Subtask name…"}
-          className={`flex-1 min-w-0 border border-[#332f28] bg-concrete px-2 py-1.5 font-mono text-[13px] placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)] ${isDone ? "line-through text-muted" : "text-ink"}`}
+          className={`flex-1 min-w-0 rounded-md border border-[rgba(255,255,255,0.09)] bg-concrete px-2 py-1.5 font-mono text-[13px] placeholder:text-muted/60 focus:outline-none focus:border-[#b08a3e] transition-colors ${isDone ? "line-through text-muted" : "text-ink"}`}
         />
         {/* Hover row actions */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -403,7 +403,7 @@ function TaskRow({
             onChange={(e) => promptDebounce.call(e.target.value)}
             onBlur={() => promptDebounce.flush()}
             placeholder={isHuman ? "Notes (optional)…" : "Instructions for the agent (optional — defaults to the task name)…"}
-            className="w-full min-h-[60px] resize-y border border-[#332f28] bg-concrete px-2 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted focus:outline-none focus:shadow-[inset_0_0_0_2px_var(--ink)]"
+            className="w-full min-h-[60px] resize-y rounded-md border border-[rgba(255,255,255,0.09)] bg-concrete px-2 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted/60 focus:outline-none focus:border-[#b08a3e] transition-colors"
           />
         </div>
       )}
@@ -417,11 +417,11 @@ function StatusCircle({ job, isHuman, isDone, onClick }: { job: Job; isHuman: bo
   const base = "flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center transition-colors";
 
   let inner: React.ReactNode = null;
-  let cls = "border-[#332f28] bg-paper hover:bg-concrete";
+  let cls = "border-[rgba(255,255,255,0.12)] bg-concrete hover:bg-concrete-2";
   let title = isHuman ? "Mark done" : "Run task";
-  if (isDone) { cls = "border-[#332f28] bg-ink text-paper"; inner = <Check className="w-3 h-3" />; title = "Done — click to reopen"; }
-  else if (running) { cls = "border-[#332f28] bg-paper text-ink"; inner = <Loader2 className="w-3 h-3 animate-spin" />; title = "Running…"; }
-  else if (failed) { cls = "border-[#d6210f] bg-paper text-[#d6210f]"; inner = <RotateCcw className="w-3 h-3" />; title = "Failed — click to retry"; }
+  if (isDone) { cls = "border-[rgba(255,255,255,0.12)] bg-ink text-concrete"; inner = <Check className="w-3 h-3" />; title = "Done — click to reopen"; }
+  else if (running) { cls = "border-[rgba(255,255,255,0.12)] bg-concrete text-ink"; inner = <Loader2 className="w-3 h-3 animate-spin" />; title = "Running…"; }
+  else if (failed) { cls = "border-[#e5392a] bg-concrete text-[#e5392a]"; inner = <RotateCcw className="w-3 h-3" />; title = "Failed — click to retry"; }
   else if (!isHuman) { inner = <Play className="w-2.5 h-2.5 text-muted" />; }
 
   return (

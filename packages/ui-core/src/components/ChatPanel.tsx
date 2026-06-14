@@ -1,6 +1,9 @@
 "use client";
-import { useState, useRef, useCallback } from "react";
-import { Paperclip, Play, Monitor, MessageSquare, ListTree } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import {
+  Plus, Monitor, MessageSquare, ListTree, Send,
+  Sparkles, Zap, ChevronDown,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
 import { PlanBuilder } from "@/components/PlanBuilder";
@@ -13,6 +16,25 @@ interface Props {
   onJobCreated?: (id: string) => void;
 }
 
+const MODELS = [
+  { value: "", label: "Default" },
+  { value: "claude-opus-4-6", label: "Opus 4.6" },
+  { value: "claude-sonnet-4-6", label: "Sonnet 4.6" },
+  { value: "claude-sonnet-4-5-20250514", label: "Sonnet 4.5" },
+  { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+  { value: "opus", label: "Opus (latest)" },
+  { value: "sonnet", label: "Sonnet (latest)" },
+  { value: "haiku", label: "Haiku (latest)" },
+];
+
+const EFFORTS = [
+  { value: "", label: "Default" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "max", label: "Max" },
+];
+
 export function ChatPanel({ projectId, onJobCreated }: Props) {
   const [mode, setMode] = useState<"describe" | "plan">("describe");
   const [prompt, setPrompt] = useState("");
@@ -22,10 +44,36 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const [showEffortMenu, setShowEffortMenu] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
+  const effortMenuRef = useRef<HTMLDivElement>(null);
   const { addJob } = useFactory();
   const _project = useProject(projectId);
+
+  const modelLabel = MODELS.find((m) => m.value === model)?.label ?? "Default";
+  const effortLabel = EFFORTS.find((e) => e.value === effort)?.label ?? "Default";
+
+  // Auto-grow textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [prompt]);
+
+  // Close menus on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) setShowModelMenu(false);
+      if (effortMenuRef.current && !effortMenuRef.current.contains(e.target as Node)) setShowEffortMenu(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
     const { images, skipped } = await uploadFiles(files);
@@ -92,110 +140,177 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
   }
 
+  if (mode === "plan") {
+    return (
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            onClick={() => setMode("describe")}
+            className="font-data text-[11px] px-2.5 py-1 flex items-center gap-1.5 rounded-md transition-colors text-muted hover:text-ink hover:bg-concrete-2"
+          >
+            <MessageSquare className="w-3 h-3" /> Chat
+          </button>
+          <button
+            className="font-data text-[11px] px-2.5 py-1 flex items-center gap-1.5 rounded-md bg-concrete-2 text-ink"
+          >
+            <ListTree className="w-3 h-3" /> Plan
+          </button>
+        </div>
+        <PlanBuilder projectId={projectId} />
+      </div>
+    );
+  }
+
   return (
     <div ref={dropRef} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-      <div className="flex gap-0 mb-3 border border-[#332f28] w-max">
-        <button
-          onClick={() => setMode("describe")}
-          className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 transition-colors ${mode === "describe" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
-        >
-          <MessageSquare className="w-3 h-3" /> Describe
-        </button>
-        <button
-          onClick={() => setMode("plan")}
-          className={`font-data text-[11px] px-3 py-1.5 uppercase flex items-center gap-1.5 transition-colors border-l border-[#332f28] ${mode === "plan" ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-concrete"}`}
-        >
-          <ListTree className="w-3 h-3" /> Plan myself
-        </button>
-      </div>
-
-      {mode === "plan" ? (
-        <PlanBuilder projectId={projectId} />
-      ) : (
-      <div className="bg-paper border border-[#332f28] brutal-shadow grid-bg">
-        <div className="flex justify-between items-center px-5 py-4 border-b border-[#332f28] bg-paper">
-          <b className="font-display uppercase text-[15px]">New Job — {_project?.name ?? "…"}</b>
-          <div className="flex items-center gap-2">
-            <button
-              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${delegate ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"}`}
-              onClick={() => setDelegate((v) => !v)}
-              title="Delegate: plan the task and split it into parallel sub-agents, merged into one PR"
-            >
-              <span className={`w-[7px] h-[7px] ${delegate ? "bg-[#e0a32e]" : "bg-[#888]"}`} />
-              Delegate {delegate ? "on" : "off"}
-            </button>
-            <button
-              className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${autoRun ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"} ${delegate ? "opacity-40 pointer-events-none" : ""}`}
-              onClick={() => setAutoRun((v) => !v)}
-              title="Auto-run: start executing immediately after creating"
-            >
-              <span className={`w-[7px] h-[7px] ${autoRun ? "bg-[#3bd16f]" : "bg-[#888]"}`} />
-              Auto-run {autoRun ? "on" : "off"}
-            </button>
+      {/* Main chat input container */}
+      <div className="rounded-xl border border-[rgba(255,255,255,0.09)] bg-paper brutal-shadow overflow-hidden">
+        {/* Attachment previews above input */}
+        {attachments.length > 0 && (
+          <div className="flex gap-2 flex-wrap px-4 pt-3">
+            {attachments.map((src, i) => (
+              <AttachmentPreview
+                key={i}
+                src={src}
+                size={48}
+                onRemove={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+              />
+            ))}
           </div>
-        </div>
+        )}
 
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-[#332f28] bg-paper">
-          <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
-            Model
-            <select value={model} onChange={(e) => setModel(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
-              <option value="">Default</option>
-              <option value="claude-opus-4-6">Opus 4.6</option>
-              <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-              <option value="claude-sonnet-4-5-20250514">Sonnet 4.5</option>
-              <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-              <option value="opus">Opus (latest)</option>
-              <option value="sonnet">Sonnet (latest)</option>
-              <option value="haiku">Haiku (latest)</option>
-            </select>
-          </label>
-          <label className="font-data text-[11px] uppercase flex items-center gap-1.5">
-            Effort
-            <select value={effort} onChange={(e) => setEffort(e.target.value)} className="font-data text-[11px] uppercase bg-concrete border border-[#332f28] px-2 py-1 focus:outline-none cursor-pointer">
-              <option value="">Default</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="max">Max</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="p-5 bg-paper">
-          {attachments.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-3">
-              {attachments.map((src, i) => <AttachmentPreview key={i} src={src} onRemove={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} />)}
-            </div>
-          )}
+        {/* Textarea */}
+        <div className="px-4 pt-3 pb-2">
           <textarea
+            ref={textareaRef}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            placeholder="Describe what you want to build or change…  (paste or drop files, Cmd+Enter to send)"
-            className="w-full min-h-[150px] resize-y border border-[#332f28] bg-concrete p-3.5 font-mono text-[13px] text-ink leading-[1.5] placeholder:text-muted focus:outline-none focus:bg-[#dfdcd4] focus:shadow-[inset_0_0_0_3px_var(--ink)] transition-shadow"
+            rows={1}
+            placeholder="Ask to make changes, @mention files, run /commands"
+            className="w-full resize-none bg-transparent font-mono text-[13px] text-ink leading-[1.6] placeholder:text-muted/60 focus:outline-none min-h-[24px]"
           />
         </div>
 
-        <div className="flex justify-between items-center px-5 py-4 border-t border-[#332f28] bg-paper">
-          <div className="flex items-center gap-3">
-            <button className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b border-[#332f28] pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors" onClick={() => fileRef.current?.click()}>
-              <Paperclip className="w-3.5 h-3.5" />Attach files
+        {/* Bottom toolbar */}
+        <div className="flex items-center justify-between px-3 py-2 border-t border-[rgba(255,255,255,0.06)]">
+          <div className="flex items-center gap-1">
+            {/* Model selector */}
+            <div className="relative" ref={modelMenuRef}>
+              <button
+                onClick={() => { setShowModelMenu((v) => !v); setShowEffortMenu(false); }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md font-data text-[11px] text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
+              >
+                <span className={`w-[6px] h-[6px] rounded-full ${model ? "bg-[#4ade80]" : "bg-muted/50"}`} />
+                {modelLabel}
+                <ChevronDown className="w-3 h-3 opacity-50" />
+              </button>
+              {showModelMenu && (
+                <div className="absolute bottom-full mb-1 left-0 min-w-[160px] rounded-lg border border-[rgba(255,255,255,0.09)] bg-paper shadow-lg z-30 py-1">
+                  {MODELS.map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => { setModel(m.value); setShowModelMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 font-data text-[11px] transition-colors ${model === m.value ? "text-ink bg-concrete-2" : "text-muted hover:text-ink hover:bg-concrete-2"}`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Delegate toggle */}
+            <button
+              onClick={() => setDelegate((v) => !v)}
+              title="Delegate: plan and split into parallel sub-agents"
+              className={`flex items-center gap-1 px-2 py-1 rounded-md font-data text-[11px] transition-colors ${delegate ? "text-[#e0bd63] bg-[#e0bd63]/10" : "text-muted hover:text-ink hover:bg-concrete-2"}`}
+            >
+              <Sparkles className="w-3 h-3" />
+            </button>
+
+            {/* Effort selector */}
+            <div className="relative" ref={effortMenuRef}>
+              <button
+                onClick={() => { setShowEffortMenu((v) => !v); setShowModelMenu(false); }}
+                className="flex items-center gap-1 px-2 py-1 rounded-md font-data text-[11px] text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
+              >
+                <Zap className="w-3 h-3" />
+                {effortLabel}
+              </button>
+              {showEffortMenu && (
+                <div className="absolute bottom-full mb-1 left-0 min-w-[120px] rounded-lg border border-[rgba(255,255,255,0.09)] bg-paper shadow-lg z-30 py-1">
+                  {EFFORTS.map((e) => (
+                    <button
+                      key={e.value}
+                      onClick={() => { setEffort(e.value); setShowEffortMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 font-data text-[11px] transition-colors ${effort === e.value ? "text-ink bg-concrete-2" : "text-muted hover:text-ink hover:bg-concrete-2"}`}
+                    >
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Plan mode toggle */}
+            <button
+              onClick={() => setMode("plan")}
+              title="Plan it yourself"
+              className="flex items-center gap-1 px-2 py-1 rounded-md font-data text-[11px] text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
+            >
+              <ListTree className="w-3 h-3" />
+            </button>
+
+            {/* Separator */}
+            <div className="w-px h-4 bg-[rgba(255,255,255,0.08)] mx-0.5" />
+
+            {/* Attach file */}
+            <button
+              onClick={() => fileRef.current?.click()}
+              title="Attach files"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
             </button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
-            <button className="font-data text-[12px] uppercase flex items-center gap-1.5 border-b border-[#332f28] pb-px hover:bg-ink hover:text-paper hover:border-transparent hover:px-1.5 hover:py-0.5 transition-colors" onClick={captureScreen}>
-              <Monitor className="w-3.5 h-3.5" />Screenshot
+
+            {/* Screenshot */}
+            <button
+              onClick={captureScreen}
+              title="Screenshot"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
+            >
+              <Monitor className="w-3.5 h-3.5" />
             </button>
+
           </div>
-          <button onClick={submit} disabled={!prompt.trim() || loading} className="font-display uppercase text-[14px] bg-ink text-paper px-7 py-3 inline-flex items-center gap-2 brutal-press disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-none">
-            {delegate ? "Delegate" : autoRun ? "Run" : "Queue"} <Play className="w-3.5 h-3.5" />
+
+          {/* Send button */}
+          <button
+            onClick={submit}
+            disabled={!prompt.trim() || loading}
+            className="flex items-center justify-center w-7 h-7 rounded-lg bg-ink text-concrete transition-all hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Send className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
-      )}
-      {mode === "describe" && (
-        <p className="font-data text-[10px] text-muted mt-3.5 uppercase text-right">or paste / drag-drop · Cmd+Enter to send</p>
-      )}
+
+      {/* Auto-run indicator */}
+      <div className="flex items-center justify-between mt-2 px-1">
+        <button
+          onClick={() => setAutoRun((v) => !v)}
+          className={`font-data text-[10px] flex items-center gap-1.5 transition-colors ${autoRun ? "text-[#4ade80]/80" : "text-muted/60"}`}
+        >
+          <span className={`w-[5px] h-[5px] rounded-full ${autoRun ? "bg-[#4ade80]" : "bg-muted/40"}`} />
+          Auto-run {autoRun ? "on" : "off"}
+        </button>
+        <span className="font-data text-[10px] text-muted/40">
+          {delegate ? "Delegate mode" : "Cmd+Enter to send"}
+        </span>
+      </div>
     </div>
   );
 }
