@@ -144,6 +144,7 @@ export function App() {
   const [newWsProject, setNewWsProject] = useState<string | null>(null);
   const [view, setView] = useState<ShellView>("dashboard");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [boardView, setBoardView] = useState<"board" | "list">("board");
   const [sidebarWidth, setSidebarWidth] = useState(248);
   const [dockWidth, setDockWidth] = useState(0); // 0 = use default percentage
   const [dockOpen, setDockOpen] = useState(true);
@@ -193,7 +194,7 @@ export function App() {
             <div className="px-4 sm:px-6 pt-3">
               <ProjectTabs projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} />
             </div>
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6"><ProjectBoard projectId={projectId} onSelectJob={openJob} /></div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6"><ProjectBoard projectId={projectId} onSelectJob={openJob} view={boardView} onViewChange={setBoardView} /></div>
           </div>
         );
       case "history":

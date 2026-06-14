@@ -1,5 +1,4 @@
 "use client";
-import { useState } from "react";
 import { LayoutGrid, List as ListIcon } from "lucide-react";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { JobListView } from "@/components/JobListView";
@@ -8,8 +7,8 @@ import { NotOnMainBanner } from "@/components/NotOnMainBanner";
 // The main Board tab: a ClickUp-style List | Board toggle over the project's
 // jobs. Board is the existing Kanban; List is a grouped, inline-editable list
 // you can type new tasks straight into.
-export function ProjectBoard({ projectId, onSelectJob }: { projectId?: string; onSelectJob: (id: string) => void }) {
-  const [view, setView] = useState<"board" | "list">("board");
+export function ProjectBoard({ projectId, onSelectJob, view, onViewChange }: { projectId?: string; onSelectJob: (id: string) => void; view: "board" | "list"; onViewChange: (v: "board" | "list") => void }) {
+  const setView = onViewChange;
 
   return (
     <div className="h-full flex flex-col gap-3">
