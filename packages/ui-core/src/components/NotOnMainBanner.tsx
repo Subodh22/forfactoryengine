@@ -1,9 +1,9 @@
 "use client";
 import { useState } from "react";
-import { ChevronDown, ChevronRight, ExternalLink, ArrowUpRight, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, ArrowUpRight, RefreshCw, GitMerge } from "lucide-react";
 import { toast } from "sonner";
 import { useJobs } from "@/lib/data";
-import { reconcilePRs } from "@/lib/mutations";
+import { reconcilePRs, mergeAllPRs } from "@/lib/mutations";
 import { jobNotOnMain } from "./MainBadge";
 
 // Dashboard surface: completed jobs whose work never landed on main — sitting in
@@ -14,7 +14,9 @@ export function NotOnMainBanner({ projectId, onSelectJob }: { projectId?: string
   const jobs = useJobs(projectId);
   const [open, setOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [merging, setMerging] = useState(false);
   const unlanded = jobs.filter(jobNotOnMain).sort((a, b) => b.createdAt - a.createdAt);
+  const mergeable = unlanded.filter((j) => j.prNumber > 0).length;
 
   async function sync() {
     setSyncing(true);
@@ -25,6 +27,22 @@ export function NotOnMainBanner({ projectId, onSelectJob }: { projectId?: string
       toast.error(String(err instanceof Error ? err.message : err) || "Could not check GitHub");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function mergeAll() {
+    if (!projectId || merging) return;
+    if (!window.confirm(`Merge ${mergeable} open PR${mergeable === 1 ? "" : "s"} into main? This deploys them to Vercel.`)) return;
+    setMerging(true);
+    try {
+      const { merged, failed, errors } = await mergeAllPRs(projectId);
+      if (merged) toast.success(`Merged ${merged} PR${merged === 1 ? "" : "s"} to main`);
+      if (failed) toast.error(`${failed} could not merge${errors[0] ? ` — e.g. ${errors[0]}` : ""}`);
+      if (!merged && !failed) toast.info("Nothing to merge");
+    } catch (err) {
+      toast.error(String(err instanceof Error ? err.message : err) || "Merge-all failed");
+    } finally {
+      setMerging(false);
     }
   }
 
@@ -39,6 +57,16 @@ export function NotOnMainBanner({ projectId, onSelectJob }: { projectId?: string
             {unlanded.length} job{unlanded.length === 1 ? "" : "s"} not on main — not deployed
           </span>
         </button>
+        {mergeable > 0 && (
+          <button
+            onClick={mergeAll}
+            disabled={merging}
+            title={`Merge ${mergeable} open PR${mergeable === 1 ? "" : "s"} into main`}
+            className="flex items-center gap-1 font-data text-[10px] uppercase text-[#a855f7] hover:text-ink transition-colors flex-shrink-0 disabled:opacity-50"
+          >
+            <GitMerge className={`w-3 h-3 ${merging ? "animate-pulse" : ""}`} /> {merging ? "Merging…" : `Merge all (${mergeable})`}
+          </button>
+        )}
         <button
           onClick={sync}
           disabled={syncing}

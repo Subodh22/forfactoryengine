@@ -26,6 +26,27 @@ export async function getPullRequestState(
   return { state: data.state, merged: Boolean(data.merged), mergeCommitSha: data.merge_commit_sha ?? "" };
 }
 
+/** Merge a PR into its base branch. Throws a readable Error when GitHub refuses
+ *  (not mergeable — conflicts, or branch protection requiring green checks).
+ *  Returns the resulting merge commit sha. */
+export async function mergePR(
+  token: string, owner: string, repo: string, prNumber: number,
+): Promise<{ merged: boolean; sha: string }> {
+  try {
+    const { data } = await octo(token).pulls.merge({ owner, repo, pull_number: prNumber });
+    return { merged: Boolean(data.merged), sha: data.sha ?? "" };
+  } catch (err) {
+    // 405 = not mergeable (conflicts / protected branch), 409 = head moved.
+    const e = err as { status?: number; message?: string };
+    const reason = e.status === 405
+      ? "GitHub won't merge it (merge conflicts, or branch protection requires checks to pass)"
+      : e.status === 409
+        ? "the PR branch changed — refresh and try again"
+        : (e.message || "merge failed");
+    throw new Error(reason);
+  }
+}
+
 export interface RepoSummary {
   fullName: string;
   defaultBranch: string;

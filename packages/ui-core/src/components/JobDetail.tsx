@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench, GitMerge } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
@@ -13,7 +13,7 @@ import { MentionInput } from "./MentionInput";
 import { Markdown } from "./Markdown";
 import { CheckpointsBar } from "./CheckpointsBar";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -103,6 +103,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
   const redoFileInputRef = useRef<HTMLInputElement>(null);
   const [cancelling, setCancelling] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [merging, setMerging] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const addFiles = useCallback(async (files: FileList | File[], target: React.Dispatch<React.SetStateAction<string[]>> = setAttachedFiles) => {
@@ -419,7 +420,29 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
           <form onSubmit={handleReply} className="flex gap-2 items-end">
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
-            {job.worktreePath && !job.mergedToMain && (
+            {job.prNumber > 0 && !job.mergedToMain ? (
+              // Work is already on a PR branch — landing it means MERGING the PR,
+              // not pushing (the worktree is usually gone by now anyway).
+              <button
+                type="button"
+                disabled={merging}
+                onClick={async () => {
+                  setMerging(true);
+                  try {
+                    await mergeJob(job.id);
+                    toast.success(`Merged PR #${job.prNumber} to main — Vercel will deploy`);
+                  } catch (err) {
+                    toast.error(String(err instanceof Error ? err.message : err) || "Could not merge the PR");
+                  } finally {
+                    setMerging(false);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-2 rounded-md bg-[#a855f7] text-white font-data text-[10px] uppercase hover:brightness-110 transition-all flex-shrink-0 disabled:opacity-40"
+                title={`Merge PR #${job.prNumber} into main`}
+              >
+                <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge to main"}
+              </button>
+            ) : job.worktreePath && !job.mergedToMain ? (
               <button
                 type="button"
                 disabled={pushing || job.pushState === "pushing"}
@@ -439,7 +462,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
               >
                 <UploadCloud className="w-3.5 h-3.5" />
               </button>
-            )}
+            ) : null}
             <MentionInput
               jobId={jobId}
               value={reply}

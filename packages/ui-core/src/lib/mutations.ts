@@ -96,6 +96,14 @@ export const retryPush = (id: string) => api(`/api/jobs/${id}/retry-push`, { met
 // "not on main" surfaces reflect reality. Returns how many jobs changed.
 export const reconcilePRs = () => api<{ updated: number }>("/api/reconcile-prs", { method: "POST" });
 
+// Merge a job's open PR into main (lands it + triggers a Vercel prod deploy).
+// Throws with a readable reason if GitHub refuses (conflicts / branch protection).
+export const mergeJob = (id: string) => api<{ ok: boolean }>(`/api/jobs/${id}/merge`, { method: "POST" });
+
+// Merge every un-landed PR-flow job in a project. Best-effort; returns tallies.
+export const mergeAllPRs = (projectId: string) =>
+  api<{ merged: number; failed: number; errors: string[] }>(`/api/merge-all?projectId=${encodeURIComponent(projectId)}`, { method: "POST" });
+
 export const redoJob = (id: string, extraPrompt?: string, extraImages?: string[]) =>
   api<Job>(`/api/jobs/${id}/redo`, { method: "POST", body: JSON.stringify({ extraPrompt, extraImages }) });
 

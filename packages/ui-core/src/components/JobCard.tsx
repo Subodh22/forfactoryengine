@@ -4,14 +4,15 @@ import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
 import { MainBadge } from "./MainBadge";
-import { ExternalLink, X, Play, GitBranch, RotateCcw, UploadCloud } from "lucide-react";
+import { ExternalLink, X, Play, GitBranch, RotateCcw, UploadCloud, GitMerge } from "lucide-react";
 import { toast } from "sonner";
 import type { Job } from "@/lib/types";
-import { queueJob, cancelJob, cancelEpic, createJob, retryPush } from "@/lib/mutations";
+import { queueJob, cancelJob, cancelEpic, createJob, retryPush, mergeJob } from "@/lib/mutations";
 
 export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?: (id: string) => void; childProgress?: { done: number; total: number } }) {
   const [showRedoDialog, setShowRedoDialog] = useState(false);
   const [additionalPrompt, setAdditionalPrompt] = useState("");
+  const [merging, setMerging] = useState(false);
 
   const elapsed = job.startedAt > 0 ? Math.round(((job.completedAt || Date.now()) - job.startedAt) / 1000) : null;
 
@@ -28,6 +29,20 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
   async function handleRetryPush() {
     await retryPush(job.id);
     toast.info("Retrying push — watch the push chip");
+  }
+
+  async function handleMerge(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (merging) return;
+    setMerging(true);
+    try {
+      await mergeJob(job.id);
+      toast.success(`Merged PR #${job.prNumber} to main — Vercel will deploy`);
+    } catch (err) {
+      toast.error(String(err instanceof Error ? err.message : err) || "Could not merge the PR");
+    } finally {
+      setMerging(false);
+    }
   }
 
   async function handleRedo() {
@@ -96,6 +111,16 @@ export function JobCard({ job, onSelect, childProgress }: { job: Job; onSelect?:
               <a href={job.prUrl} target="_blank" rel="noopener noreferrer" className="p-1 text-muted hover:text-ink" onClick={(e) => e.stopPropagation()}>
                 <ExternalLink className="w-3 h-3" />
               </a>
+            )}
+            {job.prNumber > 0 && !job.mergedToMain && (
+              <button
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md font-data text-[10px] uppercase bg-[#a855f7] text-white hover:brightness-110 transition-all disabled:opacity-40"
+                title={`Merge PR #${job.prNumber} into main`}
+                disabled={merging}
+                onClick={handleMerge}
+              >
+                <GitMerge className="w-2.5 h-2.5" /> {merging ? "Merging…" : "Merge"}
+              </button>
             )}
             {job.status === "pending" && (
               <button

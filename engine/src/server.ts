@@ -23,7 +23,7 @@ import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
 import { retryPush } from "./push";
-import { reconcileMergedPRs } from "./pr-watch";
+import { reconcileMergedPRs, mergeJobToMain, mergeAllForProject } from "./pr-watch";
 import { readOutput, clearOutput } from "./output-log";
 import { readChat, appendChat, clearChat } from "./chat-log";
 import { scheduleDelegationCheck, finalizeEpic } from "./delegator-scheduler";
@@ -359,6 +359,12 @@ export function startServer(port: number): http.Server {
       if (method === "POST" && pathname === "/api/reconcile-prs") {
         return sendJson(res, 200, { updated: await reconcileMergedPRs() });
       }
+      // Merge every un-landed PR-flow job in a project into main.
+      if (method === "POST" && pathname === "/api/merge-all") {
+        const projectId = url.searchParams.get("projectId") || "";
+        if (!projectId) return sendJson(res, 400, { error: "projectId required" });
+        return sendJson(res, 200, await mergeAllForProject(projectId));
+      }
       if (method === "POST" && pathname === "/api/jobs") {
         const b = await parseBody(req, res, CreateJobBodySchema);
         if (!b) return;
@@ -595,6 +601,11 @@ export function startServer(port: number): http.Server {
           // Progress streams back over the WebSocket as pushState changes.
           void retryPush(id).catch((err) => console.error(`[retry-push] ${id}: ${err}`));
           return sendJson(res, 202, { ok: true });
+        }
+        // Merge this job's open PR into main — awaited so the UI gets the verdict.
+        if (method === "POST" && action === "merge") {
+          const out = await mergeJobToMain(id);
+          return out.ok ? sendJson(res, 200, { ok: true }) : sendJson(res, 400, { error: out.error });
         }
         if (method === "POST" && action === "requeue") {
           await requeueJob(id);
