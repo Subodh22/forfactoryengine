@@ -383,10 +383,12 @@ export function epicPrBody(job: Job): string {
 }
 
 /**
- * Deliver a finished job's commits to the remote: PR flow when the project has
- * a GitHub repo + token, direct push to the default branch otherwise. Updates
- * pushState throughout and never throws — { ok: false } means the push is in
- * "needs_help" and the worktree should be kept for RETRY PUSH.
+ * Deliver a finished job's commits to the remote. By default it pushes straight
+ * onto the project's default branch (rebase + agent conflict resolution), so the
+ * work actually lands and deploys. Set pushMode="pr" (setting or
+ * FACTORY_PUSH_MODE) for the branch + pull-request + CI-autofix flow instead.
+ * Updates pushState throughout and never throws — { ok: false } means the push
+ * is in "needs_help" and the worktree should be kept for RETRY PUSH.
  */
 export async function finalizeJobPush(jobId: string, project: Project, worktreePath: string, branch: string): Promise<PushOutcome> {
   const job = await getJob(jobId);
@@ -398,7 +400,14 @@ export async function finalizeJobPush(jobId: string, project: Project, worktreeP
   const commitMessage = `feat: ${job.title}\n\nAutomated by Factory${job.kind === "epic" ? " (delegated)" : ""}`;
   try {
     const token = project.githubToken || (await getSetting("githubToken")) || "";
-    if (project.repo.includes("/") && token) {
+    // How finished work reaches the remote. Default "direct": push straight onto
+    // the default branch (commit → rebase → agent-resolve conflicts → push), so
+    // the work actually lands on main and deploys — no PR left dangling, no stale
+    // worktree dead-end. Set the "pushMode" setting (or FACTORY_PUSH_MODE) to
+    // "pr" to go back to the branch + pull-request + CI-autofix flow.
+    const pushMode = ((await getSetting("pushMode")) || process.env.FACTORY_PUSH_MODE || "direct").toLowerCase();
+    const usePR = pushMode === "pr" && project.repo.includes("/") && Boolean(token);
+    if (usePR) {
       log(jobId, "Committing and pushing branch for a PR…");
       commitOnly(worktreePath, commitMessage); // false on retries — commit already exists
       const pushed = await pushBranchWithRetry(job, worktreePath, branch);
