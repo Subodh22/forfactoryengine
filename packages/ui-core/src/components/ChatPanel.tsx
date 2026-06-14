@@ -20,8 +20,10 @@ interface ModelOption {
 
 const MODEL_OPTIONS: ModelOption[] = [
   { value: "", label: "Default", group: "Claude Code" },
-  { value: "claude-opus-4-6", label: "Opus 4.6", badge: "new", group: "Claude Code" },
-  { value: "claude-opus-4-6-1m", label: "Opus 4.6 1M", badge: "new", group: "Claude Code" },
+  { value: "claude-opus-4-8", label: "Opus 4.8", badge: "new", group: "Claude Code" },
+  { value: "claude-opus-4-8[1m]", label: "Opus 4.8 1M", badge: "new", group: "Claude Code" },
+  { value: "claude-opus-4-6", label: "Opus 4.6", group: "Claude Code" },
+  { value: "claude-opus-4-6-1m", label: "Opus 4.6 1M", group: "Claude Code" },
   { value: "claude-opus-4-5-20250514", label: "Opus 4.5", group: "Claude Code" },
   { value: "claude-sonnet-4-6", label: "Sonnet 4.6", badge: "new", group: "Claude Code" },
   { value: "claude-sonnet-4-6-1m", label: "Sonnet 4.6 1M", badge: "new", group: "Claude Code" },

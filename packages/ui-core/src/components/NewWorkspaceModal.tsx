@@ -177,7 +177,10 @@ export function NewWorkspaceModal({ projectId, onClose, onJobCreated }: Props) {
             title="Model"
           >
             <option value="">Opus (latest)</option>
+            <option value="claude-opus-4-8">Opus 4.8</option>
+            <option value="claude-opus-4-8[1m]">Opus 4.8 (1M)</option>
             <option value="claude-opus-4-6">Opus 4.6</option>
+            <option value="claude-opus-4-6[1m]">Opus 4.6 (1M)</option>
             <option value="claude-sonnet-4-6">Sonnet 4.6</option>
             <option value="claude-sonnet-4-5-20250514">Sonnet 4.5</option>
             <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
