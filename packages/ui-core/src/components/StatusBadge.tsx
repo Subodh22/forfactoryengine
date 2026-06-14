@@ -3,15 +3,15 @@ import { cn } from "@/lib/utils";
 
 // Brutalist signage tags — square, uppercase Space Mono, hard ink edges.
 const config = {
-  pending: { label: "Pending", className: "border-[#332f28] text-ink" },
-  queued: { label: "Queued", className: "border-[#332f28] text-ink" },
+  pending: { label: "Pending", className: "border-[#332f28] text-ink/60" },
+  queued: { label: "Queued", className: "border-[#332f28] text-ink/60" },
   running: { label: "Running", className: "bg-ink text-concrete border-[#332f28] animate-pulse" },
-  completed: { label: "Done", className: "border-[#1f7a3d] text-[#1f7a3d]" },
-  failed: { label: "Failed", className: "border-[#d6210f] text-[#d6210f]" },
-  cancelled: { label: "Cancelled", className: "border-muted text-muted" },
+  completed: { label: "Done", className: "border-[#332f28] text-ink/60" },
+  failed: { label: "Failed", className: "border-[#332f28] text-ink/60" },
+  cancelled: { label: "Cancelled", className: "border-[#332f28] text-muted" },
   waiting_for_input: { label: "Needs Reply", className: "bg-ink text-concrete border-[#332f28] animate-pulse" },
   clarifying: { label: "Clarifying", className: "bg-ink text-concrete border-[#332f28] animate-pulse" },
-  plan_review: { label: "Review Plan", className: "border-[#b8860b] text-[#b8860b]" },
+  plan_review: { label: "Review Plan", className: "border-[#332f28] text-ink/60" },
   delegating: { label: "Delegating", className: "bg-ink text-concrete border-[#332f28] animate-pulse" },
 };
 

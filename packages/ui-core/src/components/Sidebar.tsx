@@ -42,58 +42,57 @@ interface Props {
 function StatusIcon({ status, merged }: { status: JobStatus; merged?: boolean }) {
   if (status === "completed" && merged) {
     return (
-      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#a855f7]/15">
-        <GitMerge className="w-3 h-3 text-[#a855f7]" />
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-ink/10">
+        <GitMerge className="w-3 h-3 text-ink/50" />
       </span>
     );
   }
   if (status === "completed") {
     return (
-      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#4ade80]/15">
-        <Check className="w-3 h-3 text-[#4ade80]" />
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-ink/10">
+        <Check className="w-3 h-3 text-ink/60" />
       </span>
     );
   }
   if (status === "running" || status === "delegating") {
     return (
-      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#4ade80]/10">
-        <Loader2 className="w-3 h-3 text-[#4ade80] animate-spin" />
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-ink/10">
+        <Loader2 className="w-3 h-3 text-ink/70 animate-spin" />
       </span>
     );
   }
   if (status === "waiting_for_input" || status === "clarifying") {
     return (
-      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#e0a82e]/15">
-        <CircleDot className="w-3 h-3 text-[#e0a82e] animate-pulse" />
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-ink/10">
+        <CircleDot className="w-3 h-3 text-ink/60 animate-pulse" />
       </span>
     );
   }
   if (status === "plan_review") {
     return (
-      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#e0a82e]/15">
-        <Pause className="w-3 h-3 text-[#e0a82e]" />
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-ink/10">
+        <Pause className="w-3 h-3 text-ink/60" />
       </span>
     );
   }
   if (status === "failed") {
     return (
-      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#f4604f]/15">
-        <AlertCircle className="w-3 h-3 text-[#f4604f]" />
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-ink/10">
+        <AlertCircle className="w-3 h-3 text-ink/60" />
       </span>
     );
   }
   if (status === "cancelled") {
     return (
-      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#6b6559]/15">
-        <X className="w-3 h-3 text-[#6b6559]" />
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-ink/10">
+        <X className="w-3 h-3 text-ink/40" />
       </span>
     );
   }
   // pending, queued
   return (
     <span
-      className="w-2 h-2 rounded-full flex-shrink-0"
-      style={{ backgroundColor: status === "queued" ? "#e0a82e" : "#9a9388" }}
+      className="w-2 h-2 rounded-full flex-shrink-0 bg-ink/30"
     />
   );
 }
@@ -181,12 +180,12 @@ function ProjectTree({
                   className="flex items-center gap-2 pl-2 pr-1.5 py-1 text-left min-w-0 flex-1 overflow-hidden"
                 >
                   <StatusIcon status={ws.status} merged={ws.mergedToMain} />
-                  <span className={`text-[12.5px] truncate min-w-0 flex-1 ${ws.status === "completed" && ws.mergedToMain ? "text-ink/40 line-through decoration-ink/20" : ""}`}>{ws.title || "Untitled"}</span>
+                  <span className={`text-[12.5px] truncate min-w-0 flex-1 ${ws.status === "completed" && ws.mergedToMain ? "text-muted line-through decoration-muted/30" : ""}`}>{ws.title || "Untitled"}</span>
                   {(ws.status === "running" || ws.status === "delegating") && (
-                    <span className="flex-shrink-0 font-data text-[9px] tracking-wider uppercase text-[#4ade80] px-1 py-0.5 rounded bg-[#4ade80]/10">RUN</span>
+                    <span className="flex-shrink-0 font-data text-[9px] tracking-wider uppercase text-ink/50 px-1 py-0.5 rounded bg-ink/8">RUN</span>
                   )}
                   {ws.status === "completed" && ws.mergedToMain && (
-                    <span className="flex-shrink-0 font-data text-[9px] tracking-wider uppercase text-[#a855f7]/70 px-1 py-0.5 rounded bg-[#a855f7]/10">MRG</span>
+                    <span className="flex-shrink-0 font-data text-[9px] tracking-wider uppercase text-ink/40 px-1 py-0.5 rounded bg-ink/8">MRG</span>
                   )}
                 </button>
                 <button
