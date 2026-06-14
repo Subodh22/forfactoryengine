@@ -92,6 +92,10 @@ export const requeueJob = (id: string) => api<Job>(`/api/jobs/${id}/requeue`, { 
 // Returns 202 immediately; progress arrives over the WebSocket via pushState.
 export const retryPush = (id: string) => api(`/api/jobs/${id}/retry-push`, { method: "POST" });
 
+// Ask GitHub which PR-flow jobs were merged and reconcile mergedToMain, so the
+// "not on main" surfaces reflect reality. Returns how many jobs changed.
+export const reconcilePRs = () => api<{ updated: number }>("/api/reconcile-prs", { method: "POST" });
+
 export const redoJob = (id: string, extraPrompt?: string, extraImages?: string[]) =>
   api<Job>(`/api/jobs/${id}/redo`, { method: "POST", body: JSON.stringify({ extraPrompt, extraImages }) });
 

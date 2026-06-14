@@ -10,6 +10,22 @@ export async function getUser(token: string): Promise<{ login: string }> {
   return { login: data.login };
 }
 
+export interface PrMergeState {
+  state: string;          // "open" | "closed"
+  merged: boolean;        // true once the PR is merged into base
+  mergeCommitSha: string; // the commit on base that carries the merge (squash/merge)
+}
+
+/** Authoritative merge status for a PR — GitHub knows whether it landed on the
+ *  base branch even when the work was squash-merged (so the branch SHA differs).
+ *  Used to reconcile a job's mergedToMain after a PR is merged on GitHub. */
+export async function getPullRequestState(
+  token: string, owner: string, repo: string, prNumber: number,
+): Promise<PrMergeState> {
+  const { data } = await octo(token).pulls.get({ owner, repo, pull_number: prNumber });
+  return { state: data.state, merged: Boolean(data.merged), mergeCommitSha: data.merge_commit_sha ?? "" };
+}
+
 export interface RepoSummary {
   fullName: string;
   defaultBranch: string;

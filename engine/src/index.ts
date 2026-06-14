@@ -3,6 +3,7 @@ import { initSchema, cloudSyncEnabled } from "./db";
 import { startServer } from "./server";
 import { pickupQueued, recoverOrphans, drainForShutdown } from "./runner";
 import { killAllClaudeProcs } from "./agent/claude-runner";
+import { startPrWatch } from "./pr-watch";
 import { authEnabled } from "./auth";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -62,6 +63,10 @@ await recoverOrphans();
 // straight to the shared Turso DB). Also re-runs jobs left queued on restart.
 await pickupQueued();
 setInterval(() => void pickupQueued(), POLL_MS);
+
+// Reconcile mergedToMain for PR-flow jobs whose PRs were merged on GitHub, so
+// "not on main" / "push to main" reflect reality. Sweeps now + on an interval.
+startPrWatch();
 
 console.log(
   "Factory engine ready — " +

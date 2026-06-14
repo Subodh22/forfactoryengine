@@ -23,6 +23,7 @@ import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
 import { enqueue, cancelJob, deliverReply } from "./runner";
 import { retryPush } from "./push";
+import { reconcileMergedPRs } from "./pr-watch";
 import { readOutput, clearOutput } from "./output-log";
 import { readChat, appendChat, clearChat } from "./chat-log";
 import { scheduleDelegationCheck, finalizeEpic } from "./delegator-scheduler";
@@ -353,6 +354,10 @@ export function startServer(port: number): http.Server {
       if (method === "GET" && pathname === "/api/jobs") {
         const projectId = url.searchParams.get("projectId") || undefined;
         return sendJson(res, 200, await listJobs(projectId));
+      }
+      // Ask GitHub which PR-flow jobs have been merged and reconcile mergedToMain.
+      if (method === "POST" && pathname === "/api/reconcile-prs") {
+        return sendJson(res, 200, { updated: await reconcileMergedPRs() });
       }
       if (method === "POST" && pathname === "/api/jobs") {
         const b = await parseBody(req, res, CreateJobBodySchema);

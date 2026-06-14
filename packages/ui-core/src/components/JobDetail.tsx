@@ -419,7 +419,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
           <form onSubmit={handleReply} className="flex gap-2 items-end">
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
-            {job.worktreePath && (
+            {job.worktreePath && !job.mergedToMain && (
               <button
                 type="button"
                 disabled={pushing || job.pushState === "pushing"}
