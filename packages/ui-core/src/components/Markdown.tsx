@@ -20,7 +20,7 @@ function renderInline(text: string, key: string): ReactNode[] {
     const tok = m[0];
     const k = `${key}-${i++}`;
     if (tok.startsWith("`")) {
-      out.push(<code key={k} className="font-mono text-[0.92em] px-1 py-0.5 rounded bg-[#0f0d0b] border border-[#2a2722] text-[#e6c98a]">{tok.slice(1, -1)}</code>);
+      out.push(<code key={k} className="font-mono text-[0.9em] px-1.5 py-0.5 rounded bg-[#0f0d0b] border border-[#2a2722] text-[#e6c98a]">{tok.slice(1, -1)}</code>);
     } else if (tok.startsWith("**") || tok.startsWith("__")) {
       out.push(<strong key={k} className="font-semibold text-ink">{renderInline(tok.slice(2, -2), k)}</strong>);
     } else if (tok.startsWith("~~")) {
@@ -126,51 +126,52 @@ function parseBlocks(src: string): Block[] {
 export function Markdown({ text, className = "" }: { text: string; className?: string }) {
   const blocks = parseBlocks(text);
   return (
-    <div className={`text-[13px] leading-[1.6] text-ink/90 space-y-2.5 ${className}`}>
+    <div className={`text-[13.5px] leading-[1.75] text-ink/90 space-y-4 ${className}`}>
       {blocks.map((b, i) => {
         const key = `b-${i}`;
         switch (b.t) {
           case "code":
             return (
-              <pre key={key} className="overflow-x-auto rounded-md bg-[#0f0d0b] border border-[#2a2722] p-3">
-                {b.lang && <div className="font-data text-[9px] uppercase tracking-wide text-muted mb-1.5">{b.lang}</div>}
+              <pre key={key} className="overflow-x-auto rounded-md bg-[#0f0d0b] border border-[#2a2722] p-4 my-1">
+                {b.lang && <div className="font-data text-[9px] uppercase tracking-wide text-muted mb-2">{b.lang}</div>}
                 <code className="font-mono text-[12px] leading-relaxed text-[#cfe8cf] whitespace-pre">{b.lines.join("\n")}</code>
               </pre>
             );
           case "heading": {
-            const sizes = ["text-[17px]", "text-[15px]", "text-[14px]", "text-[13px]", "text-[13px]", "text-[12px]"];
-            return <div key={key} className={`font-semibold text-ink ${sizes[b.level - 1]} mt-1`}>{renderInline(b.text, key)}</div>;
+            const sizes = ["text-[19px]", "text-[17px]", "text-[15px]", "text-[14px]", "text-[13.5px]", "text-[13px]"];
+            const margins = ["mt-5 mb-2", "mt-4 mb-1.5", "mt-3 mb-1", "mt-2 mb-1", "mt-2 mb-0.5", "mt-1 mb-0.5"];
+            return <div key={key} className={`font-bold text-ink ${sizes[b.level - 1]} ${margins[b.level - 1]} tracking-[-0.01em]`}>{renderInline(b.text, key)}</div>;
           }
           case "ul":
             return (
-              <ul key={key} className="list-disc pl-5 space-y-1 marker:text-muted">
-                {b.items.map((it, j) => <li key={j}>{renderInline(it, `${key}-${j}`)}</li>)}
+              <ul key={key} className="list-disc pl-5 space-y-1.5 marker:text-ink/40">
+                {b.items.map((it, j) => <li key={j} className="pl-1">{renderInline(it, `${key}-${j}`)}</li>)}
               </ul>
             );
           case "ol":
             return (
-              <ol key={key} className="list-decimal pl-5 space-y-1 marker:text-muted">
-                {b.items.map((it, j) => <li key={j}>{renderInline(it, `${key}-${j}`)}</li>)}
+              <ol key={key} className="list-decimal pl-5 space-y-1.5 marker:text-ink/40">
+                {b.items.map((it, j) => <li key={j} className="pl-1">{renderInline(it, `${key}-${j}`)}</li>)}
               </ol>
             );
           case "quote":
             return (
-              <blockquote key={key} className="border-l-2 border-[#4a453d] pl-3 text-muted italic">
+              <blockquote key={key} className="border-l-2 border-[#4a453d] pl-4 py-0.5 text-ink/70 italic">
                 {b.lines.map((l, j) => <div key={j}>{renderInline(l, `${key}-${j}`)}</div>)}
               </blockquote>
             );
           case "hr":
-            return <hr key={key} className="border-t border-[#2a2722] my-1" />;
+            return <hr key={key} className="border-t border-[#2a2722] my-3" />;
           case "table":
             return (
-              <div key={key} className="overflow-x-auto">
-                <table className="text-[12px] border-collapse">
+              <div key={key} className="overflow-x-auto my-1">
+                <table className="text-[12.5px] border-collapse">
                   <thead>
-                    <tr>{b.header.map((h, j) => <th key={j} className="border border-[#2a2722] px-2 py-1 text-left font-semibold text-ink bg-[#1a1714]">{renderInline(h, `${key}-h-${j}`)}</th>)}</tr>
+                    <tr>{b.header.map((h, j) => <th key={j} className="border border-[#2a2722] px-3 py-1.5 text-left font-semibold text-ink bg-[#1a1714]">{renderInline(h, `${key}-h-${j}`)}</th>)}</tr>
                   </thead>
                   <tbody>
                     {b.rows.map((r, ri) => (
-                      <tr key={ri}>{r.map((c, ci) => <td key={ci} className="border border-[#2a2722] px-2 py-1 align-top">{renderInline(c, `${key}-${ri}-${ci}`)}</td>)}</tr>
+                      <tr key={ri}>{r.map((c, ci) => <td key={ci} className="border border-[#2a2722] px-3 py-1.5 align-top">{renderInline(c, `${key}-${ri}-${ci}`)}</td>)}</tr>
                     ))}
                   </tbody>
                 </table>

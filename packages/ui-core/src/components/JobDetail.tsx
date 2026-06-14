@@ -337,10 +337,10 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
           <div className="flex-1 overflow-y-auto bg-concrete px-4 py-4 min-h-0">
             <div className="max-w-[820px] mx-auto"><CheckpointsBar jobId={jobId} refreshKey={`${job.status}-${messages.length}`} /></div>
             {messages.length > 0 ? (
-              <div className="max-w-[820px] mx-auto space-y-5">
+              <div className="max-w-[820px] mx-auto space-y-6">
                 {messages.map((msg) => (
                   msg.role === "assistant" ? (
-                    <div key={msg.id} className="flex flex-col gap-1.5">
+                    <div key={msg.id} className="flex flex-col gap-2">
                       <div className="flex items-center gap-1.5 text-[11px] text-muted">
                         <span className="w-3.5 h-3.5 rounded-[4px] bg-[#b08a3e] inline-block" />
                         <span className="font-medium text-ink/70">Claude</span>
@@ -348,7 +348,9 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
                       {msg.images && msg.images.length > 0 && (
                         <div className="flex gap-1.5 flex-wrap mb-1">{msg.images.map((src, i) => <AttachmentPreview key={i} src={src} size={64} />)}</div>
                       )}
-                      <Markdown text={msg.text} />
+                      <div className="pl-0.5">
+                        <Markdown text={msg.text} />
+                      </div>
                     </div>
                   ) : (
                     <div key={msg.id} className="flex flex-col items-end gap-1.5">
