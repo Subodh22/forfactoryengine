@@ -372,7 +372,19 @@ export async function startJob(jobId: string): Promise<void> {
     const repoMap = buildRepoMap(worktreePath);
     const effortNote = job.effort ? `Apply ${job.effort} reasoning effort to this task.\n\n` : "";
     const resumeNote = resumeId ? `You are continuing work on this project in a new worktree at: ${worktreePath}\n\n` : "";
-    const systemContext = `${baseRules}${claudeHint}${effortNote}${resumeNote}${repoMap}\n---\n\n`;
+    const replyFormat = `When you finish a task or respond to the user, structure your reply using these sections with markdown headers:
+
+## What happened
+Briefly explain what you did and why.
+
+## What changed
+List the files and key changes you made. Use bullet points.
+
+## What's next
+State what needs to happen now — any follow-up steps, things to test, or decisions needed.
+
+Keep each section concise. Skip a section only if it truly doesn't apply (e.g. no files changed).\n\n`;
+    const systemContext = `${baseRules}${claudeHint}${effortNote}${resumeNote}${replyFormat}${repoMap}\n---\n\n`;
 
     const promptWithImages = buildMessageWithAttachments(job.prompt, job.images, worktreePath);
     let turn = await session.sendMessage(systemContext + promptWithImages);
@@ -388,7 +400,7 @@ export async function startJob(jobId: string): Promise<void> {
       activeSessions.set(jobId, session);
       session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(warn(`save sessionId for ${jobId}`)); });
       session.onChunk((text) => emitOutput(jobId, text));
-      const freshContext = `${baseRules}${claudeHint}${effortNote}${repoMap}\n---\n\n`;
+      const freshContext = `${baseRules}${claudeHint}${effortNote}${replyFormat}${repoMap}\n---\n\n`;
       turn = await session.sendMessage(freshContext + promptWithImages);
       await updateUsage(jobId, turn.inputTokens, turn.outputTokens, turn.costUsd);
     }
