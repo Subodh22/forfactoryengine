@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { FileText, GitCompare, CheckCircle2, TerminalSquare, Globe } from "lucide-react";
+import { FileText, GitCompare, CheckCircle2, TerminalSquare, Globe, PanelRightClose } from "lucide-react";
 import { DiffViewer } from "@/components/DiffViewer";
 import { TerminalTabs } from "@/components/TerminalTabs";
 import { AllFiles } from "@/components/AllFiles";
@@ -20,6 +20,8 @@ interface Props {
   project: { name: string; localPath: string; setupScript?: string; runScript?: string };
   /** Override dock width in pixels (desktop only). */
   width?: number;
+  /** Called when the user clicks the close button in the tab strip. */
+  onClose?: () => void;
 }
 
 const TABS: { key: DockTab; label: string; icon: React.ReactNode }[] = [
@@ -30,7 +32,7 @@ const TABS: { key: DockTab; label: string; icon: React.ReactNode }[] = [
   { key: "preview", label: "Preview", icon: <Globe className="w-3.5 h-3.5" /> },
 ];
 
-export function RightDock({ jobId, project, width }: Props) {
+export function RightDock({ jobId, project, width, onClose }: Props) {
   const job = useJob(jobId);
   const [tab, setTab] = useState<DockTab>("changes");
   // Latch the terminal mounted after first visit so its shell sessions persist.
@@ -56,6 +58,18 @@ export function RightDock({ jobId, project, width }: Props) {
             {t.label}
           </button>
         ))}
+        {onClose && (
+          <>
+            <span className="flex-1" />
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center w-7 h-7 rounded-md text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
+              title="Hide side panel"
+            >
+              <PanelRightClose className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Panes */}

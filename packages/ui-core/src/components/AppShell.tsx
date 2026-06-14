@@ -1,6 +1,6 @@
 "use client";
 import { useState, useCallback, useRef } from "react";
-import { X, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { X, PanelRightOpen } from "lucide-react";
 import { ProjectBoard } from "@/components/ProjectBoard";
 import { ProjectTabs } from "@/components/ProjectTabs";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -286,26 +286,26 @@ export function App() {
         )}
 
         {/* Center pane */}
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-concrete relative">
+        <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-concrete">
           {selectedJob ? <WorkspaceView jobId={selectedJob} onRedo={openJob} onDelete={() => setSelectedJob(null)} /> : <CenterContent />}
-          {/* Dock toggle button */}
-          {selectedJob && breadcrumbProject && (
-            <button
-              onClick={() => setDockOpen((o) => !o)}
-              className="hidden lg:flex absolute top-[5px] right-2 z-10 items-center justify-center w-7 h-7 rounded-md text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
-              title={dockOpen ? "Hide side panel" : "Show side panel"}
-            >
-              {dockOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
-            </button>
-          )}
         </main>
 
         {/* Right dock — only for a selected workspace */}
         {selectedJob && breadcrumbProject && dockOpen && (
           <>
             <ResizeHandle onResize={handleDockResize} side="right" />
-            <RightDock jobId={selectedJob} project={{ name: breadcrumbProject.name, localPath: breadcrumbProject.localPath, setupScript: breadcrumbProject.setupScript, runScript: breadcrumbProject.runScript }} width={dockWidth || undefined} />
+            <RightDock jobId={selectedJob} project={{ name: breadcrumbProject.name, localPath: breadcrumbProject.localPath, setupScript: breadcrumbProject.setupScript, runScript: breadcrumbProject.runScript }} width={dockWidth || undefined} onClose={() => setDockOpen(false)} />
           </>
+        )}
+        {/* Re-open button when dock is collapsed */}
+        {selectedJob && breadcrumbProject && !dockOpen && (
+          <button
+            onClick={() => setDockOpen(true)}
+            className="hidden lg:flex flex-shrink-0 items-center justify-center w-8 border-l border-[#332f28] bg-concrete text-muted hover:text-ink hover:bg-concrete-2 transition-colors"
+            title="Show side panel"
+          >
+            <PanelRightOpen className="w-4 h-4" />
+          </button>
         )}
       </div>
 
