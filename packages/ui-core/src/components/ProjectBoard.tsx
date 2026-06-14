@@ -3,7 +3,6 @@ import { useState } from "react";
 import { LayoutGrid, List as ListIcon } from "lucide-react";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { JobListView } from "@/components/JobListView";
-import { PushHelpBanner } from "@/components/PushHelpBanner";
 import { NotOnMainBanner } from "@/components/NotOnMainBanner";
 
 // The main Board tab: a ClickUp-style List | Board toggle over the project's
@@ -14,7 +13,6 @@ export function ProjectBoard({ projectId, onSelectJob }: { projectId?: string; o
 
   return (
     <div className="h-full flex flex-col gap-3">
-      <PushHelpBanner projectId={projectId} />
       <NotOnMainBanner projectId={projectId} onSelectJob={onSelectJob} />
       <div className="flex border border-[#332f28] w-max">
 
