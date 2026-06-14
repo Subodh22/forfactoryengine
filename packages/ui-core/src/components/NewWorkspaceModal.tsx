@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useCallback, useEffect } from "react";
-import { X, Paperclip, Monitor, ChevronDown, Play } from "lucide-react";
+import { X, Paperclip, Monitor, ChevronDown, Play, ListTree } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
 import { useFactory, useProjects } from "@/lib/data";
@@ -70,7 +70,7 @@ export function NewWorkspaceModal({ projectId, onClose, onJobCreated }: Props) {
     if (files.length) addFiles(files);
   }
 
-  async function submit() {
+  async function submit(asPlan = false) {
     if (!prompt.trim()) return;
     setLoading(true);
     try {
@@ -80,12 +80,13 @@ export function NewWorkspaceModal({ projectId, onClose, onJobCreated }: Props) {
         title,
         prompt: prompt.trim(),
         images: attachments,
+        kind: asPlan ? "epic" : undefined,
         model: model || undefined,
         effort: effort || undefined,
         autoRun: true,
       });
       addJob(job);
-      toast.success("Queued — the engine will run it");
+      toast.success(asPlan ? "Planning — the engine will break it into subtasks" : "Queued — the engine will run it");
       onJobCreated?.(job.id);
       if (createMore) {
         setPrompt("");
@@ -214,7 +215,15 @@ export function NewWorkspaceModal({ projectId, onClose, onJobCreated }: Props) {
           </label>
 
           <button
-            onClick={submit}
+            onClick={() => submit(true)}
+            disabled={!prompt.trim() || loading}
+            className="font-data text-[12px] uppercase bg-concrete text-ink border border-[#332f28] px-4 py-1.5 rounded-md inline-flex items-center gap-1.5 brutal-press disabled:opacity-40 disabled:cursor-not-allowed hover:bg-ink hover:text-paper transition-colors"
+            title="Plan first — break into subtasks before executing"
+          >
+            <ListTree className="w-3 h-3" /> Plan
+          </button>
+          <button
+            onClick={() => submit()}
             disabled={!prompt.trim() || loading}
             className="font-data text-[12px] uppercase bg-ink text-paper px-4 py-1.5 rounded-md inline-flex items-center gap-1.5 brutal-press disabled:opacity-40 disabled:cursor-not-allowed"
           >
