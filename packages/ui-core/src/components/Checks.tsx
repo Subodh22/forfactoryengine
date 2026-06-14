@@ -30,7 +30,7 @@ function StatusIcon({ c }: { c: CheckRun }) {
   return <MinusCircle className="w-4 h-4 text-muted flex-shrink-0" />;
 }
 
-export function Checks({ jobId, prNumber, prUrl, canForward, refreshKey }: Props) {
+export function Checks({ jobId, prNumber: _prNumber, prUrl, canForward, refreshKey }: Props) {
   const [checks, setChecks] = useState<CheckRun[]>([]);
   const [state, setState] = useState<string>("");
   const [loading, setLoading] = useState(true);
