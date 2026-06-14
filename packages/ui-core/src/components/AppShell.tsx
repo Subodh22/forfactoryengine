@@ -286,7 +286,7 @@ export function App() {
 
         {/* Center pane */}
         <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-concrete">
-          {selectedJob ? <WorkspaceView jobId={selectedJob} onRedo={openJob} /> : <CenterContent />}
+          {selectedJob ? <WorkspaceView jobId={selectedJob} onRedo={openJob} onDelete={() => setSelectedJob(null)} /> : <CenterContent />}
         </main>
 
         {/* Right dock — only for a selected workspace */}

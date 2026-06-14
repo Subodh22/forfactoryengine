@@ -8,12 +8,13 @@ import { JobDetail } from "@/components/JobDetail";
 interface Props {
   jobId: string;
   onRedo?: (newJobId: string) => void;
+  onDelete?: () => void;
 }
 
-export function WorkspaceView({ jobId, onRedo }: Props) {
+export function WorkspaceView({ jobId, onRedo, onDelete }: Props) {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-concrete">
-      <JobDetail jobId={jobId} onRedo={onRedo} hideChanges />
+      <JobDetail jobId={jobId} onRedo={onRedo} onDelete={onDelete} hideChanges />
     </div>
   );
 }

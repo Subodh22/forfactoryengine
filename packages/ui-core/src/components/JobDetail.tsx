@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Wrench, GitMerge, X, Check, ClipboardList } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Wrench, GitMerge, X, Check, ClipboardList, Trash2 } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
@@ -13,12 +13,14 @@ import { MentionInput } from "./MentionInput";
 import { CheckpointsBar } from "./CheckpointsBar";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob, approvePlan } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob, approvePlan, removeJob } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
   jobId: string;
   onRedo?: (newJobId: string) => void;
+  /** Called after the job is deleted so the parent can navigate away. */
+  onDelete?: () => void;
   /** Hide the "Changes" tab — used when a sibling pane (RightDock) owns the diff. */
   hideChanges?: boolean;
 }
@@ -47,7 +49,7 @@ function lineClass(type: LineType): string {
   }
 }
 
-export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
+export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
   const job = useJob(jobId);
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -270,9 +272,27 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
             </button>
           )}
           {isFinished && (
-            <button onClick={() => setRedoOpen((o) => !o)} className={`flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors ${!job.pushState || !job.worktreePath ? "ml-auto" : ""}`} title="Re-run this job from scratch">
-              <RotateCcw className="w-2.5 h-2.5" />Redo
-            </button>
+            <>
+              <button onClick={() => setRedoOpen((o) => !o)} className={`flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors ${!job.pushState || !job.worktreePath ? "ml-auto" : ""}`} title="Re-run this job from scratch">
+                <RotateCcw className="w-2.5 h-2.5" />Redo
+              </button>
+              <button
+                onClick={async () => {
+                  if (!window.confirm(`Delete "${job.title || "this job"}"?`)) return;
+                  try {
+                    await removeJob(jobId);
+                    toast.success("Job deleted");
+                    onDelete?.();
+                  } catch (err) {
+                    toast.error(String(err instanceof Error ? err.message : err) || "Failed to delete");
+                  }
+                }}
+                className="flex items-center gap-1 px-2 py-0.5 font-data text-[10px] uppercase border border-[#d6210f] text-[#d6210f] hover:bg-[#d6210f] hover:text-concrete transition-colors"
+                title="Delete this job"
+              >
+                <Trash2 className="w-2.5 h-2.5" />Delete
+              </button>
+            </>
           )}
         </div>
 
