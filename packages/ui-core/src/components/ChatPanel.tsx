@@ -25,7 +25,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const { addJob } = useFactory();
-  const project = useProject(projectId);
+  const _project = useProject(projectId);
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
     const { images, skipped } = await uploadFiles(files);
@@ -114,7 +114,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
       ) : (
       <div className="bg-paper border border-[#332f28] brutal-shadow grid-bg">
         <div className="flex justify-between items-center px-5 py-4 border-b border-[#332f28] bg-paper">
-          <b className="font-display uppercase text-[15px]">New Job — {project?.name ?? "…"}</b>
+          <b className="font-display uppercase text-[15px]">New Job — {_project?.name ?? "…"}</b>
           <div className="flex items-center gap-2">
             <button
               className={`font-data text-[11px] px-2.5 py-1.5 uppercase flex items-center gap-1.5 select-none transition-colors ${delegate ? "bg-ink text-paper" : "bg-paper text-ink border border-[#332f28]"}`}
