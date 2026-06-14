@@ -67,7 +67,7 @@ export const RedoBodySchema = z.object({
 const PlanNodeSchema = z.object({
   localId: z.string().min(1),
   parentLocalId: z.string().optional(),
-  title: z.string().min(1),
+  title: z.string().default(""),
   prompt: z.string().optional(),
   assignee: JobAssigneeSchema.optional(),
   touchedPaths: z.array(z.string()).optional(),
