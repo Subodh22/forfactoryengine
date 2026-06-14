@@ -116,7 +116,7 @@ export function MentionInput({ jobId, value, onChange, onSubmit, onPaste, placeh
   return (
     <div className="relative flex-1 min-w-0">
       {menu && itemCount > 0 && (
-        <div className="absolute bottom-full mb-1 left-0 w-full max-w-[460px] max-h-[220px] overflow-y-auto rounded-lg border border-[#332f28] bg-paper shadow-lg z-20">
+        <div className="absolute bottom-full mb-1 left-0 w-full max-w-[460px] max-h-[220px] overflow-y-auto rounded-lg border border-[#3a3530] bg-[#2a2520] shadow-lg z-20">
           {menu.kind === "file"
             ? fileMatches.map((f, i) => (
                 <button
@@ -155,7 +155,7 @@ export function MentionInput({ jobId, value, onChange, onSubmit, onPaste, placeh
         onClick={(e) => refreshMenu((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart)}
         onKeyDown={onKeyDown}
         onBlur={() => setTimeout(() => setMenu(null), 120)}
-        className="w-full resize-none bg-paper border border-[#332f28] rounded-md px-3 py-2.5 font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none focus:border-[#b08a3e] transition-colors leading-relaxed"
+        className="w-full resize-none bg-[#2a2520] border border-[#3a3530] rounded-lg px-3.5 py-3 font-mono text-[13px] text-[#e8e4dc] placeholder:text-[#6b6560] focus:outline-none focus:border-[#5a5550] transition-colors leading-relaxed"
       />
     </div>
   );

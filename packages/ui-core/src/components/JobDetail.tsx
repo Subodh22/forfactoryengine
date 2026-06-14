@@ -425,14 +425,10 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
       {isEpic && <DelegatorPanel epicId={jobId} />}
 
       {canChat && (
-        <div className={`border-t p-3 flex-shrink-0 ${isWaiting ? "border-[#332f28] bg-[#b8860b]/15" : "border-[#332f28] bg-concrete"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
-          {isPending && <p className="font-data text-[10px] uppercase text-muted mb-2">Add instructions or images before this job runs</p>}
-          {isWaiting && <p className="font-data text-[10px] uppercase text-[#b8860b] mb-2 font-bold">Claude has a question — reply to continue</p>}
-          {isDelegating && <p className="font-data text-[10px] uppercase text-muted mb-2">Talk to Claude about this epic — opens a session in the integration branch</p>}
-          {isRunning && <p className="font-data text-[10px] uppercase text-muted mb-2">Message will be delivered when Claude finishes this turn</p>}
-          {isFinished && <p className="font-data text-[10px] uppercase text-muted mb-2">Continue the conversation — resumes this job&apos;s session</p>}
+        <div className={`border-t flex-shrink-0 ${isWaiting ? "border-[#b8860b]/40 bg-[#1a1714]" : "border-[#2a2722] bg-[#1a1714]"}`} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+          {isWaiting && <p className="font-data text-[10px] uppercase text-[#b8860b] px-4 pt-3 pb-1 font-bold">Claude has a question — reply to continue</p>}
           {mergeError && (
-            <div className="mb-2 rounded-md border border-[#f4604f]/60 bg-[#f4604f]/10 px-2.5 py-2 flex items-start gap-2">
+            <div className="mx-3 mt-3 rounded-md border border-[#f4604f]/60 bg-[#f4604f]/10 px-2.5 py-2 flex items-start gap-2">
               <span className="font-data text-[10px] text-[#f4604f] flex-1 min-w-0 leading-relaxed">Merge failed: {mergeError}</span>
               <button
                 type="button"
@@ -460,67 +456,73 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
             </div>
           )}
           {attachedFiles.length > 0 && (
-            <div className="flex gap-2 mb-2 flex-wrap">{attachedFiles.map((src, i) => <AttachmentPreview key={i} src={src} size={56} onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))} />)}</div>
+            <div className="flex gap-2 px-4 pt-3 flex-wrap">{attachedFiles.map((src, i) => <AttachmentPreview key={i} src={src} size={56} onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))} />)}</div>
           )}
-          <form onSubmit={handleReply} className="flex gap-2 items-end">
+          <form onSubmit={handleReply} className="flex flex-col">
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
-            {job.prNumber > 0 && !job.mergedToMain ? (
-              // Work is already on a PR branch — landing it means MERGING the PR,
-              // not pushing (the worktree is usually gone by now anyway).
-              <button
-                type="button"
-                disabled={merging}
-                onClick={async () => {
-                  setMerging(true);
-                  try {
-                    await mergeJob(job.id);
-                    setMergeError("");
-                    toast.success(`Merged PR #${job.prNumber} to main — Vercel will deploy`);
-                  } catch (err) {
-                    const msg = String(err instanceof Error ? err.message : err) || "Could not merge the PR";
-                    setMergeError(msg);
-                    toast.error(msg);
-                  } finally {
-                    setMerging(false);
-                  }
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-2 rounded-md bg-[#a855f7] text-white font-data text-[10px] uppercase hover:brightness-110 transition-all flex-shrink-0 disabled:opacity-40"
-                title={`Merge PR #${job.prNumber} into main`}
-              >
-                <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge to main"}
-              </button>
-            ) : job.worktreePath && !job.mergedToMain ? (
-              <button
-                type="button"
-                disabled={pushing || job.pushState === "pushing"}
-                onClick={async () => {
-                  setPushing(true);
-                  try {
-                    await retryPush(job.id);
-                    toast.info("Pushing — watch the push chip");
-                  } catch (err) {
-                    toast.error(String(err instanceof Error ? err.message : err) || "Failed to push");
-                  } finally {
-                    setPushing(false);
-                  }
-                }}
-                className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0 disabled:opacity-40"
-                title="Push to main"
-              >
-                <UploadCloud className="w-3.5 h-3.5" />
-              </button>
-            ) : null}
-            <MentionInput
-              jobId={jobId}
-              value={reply}
-              onChange={setReply}
-              onSubmit={() => handleReply()}
-              onPaste={onPaste}
-              autoFocus={isWaiting}
-              placeholder={isPending ? "Add to prompt…  @file  /command" : isWaiting ? "Reply to Claude…  @file  /command" : isRunning ? "Queue a message…  @file  /command" : "Message Claude…  @file  /command"}
-            />
-            <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="px-3 py-2 rounded-md bg-[#b08a3e] text-[#14110e] font-bold disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 flex-shrink-0 hover:brightness-110 transition-all"><Send className="w-3 h-3" />{sending ? "…" : "Send"}</button>
+            <div className="px-3 pt-3 pb-1">
+              <MentionInput
+                jobId={jobId}
+                value={reply}
+                onChange={setReply}
+                onSubmit={() => handleReply()}
+                onPaste={onPaste}
+                autoFocus={isWaiting}
+                placeholder="Ask to make changes, @mention files, run /commands"
+              />
+            </div>
+            <div className="flex items-center justify-between px-3 pb-3 pt-1">
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] transition-colors" title="Capture screenshot"><Monitor className="w-4 h-4" /></button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] transition-colors" title="Attach files"><Paperclip className="w-4 h-4" /></button>
+                {job.prNumber > 0 && !job.mergedToMain && (
+                  <button
+                    type="button"
+                    disabled={merging}
+                    onClick={async () => {
+                      setMerging(true);
+                      try {
+                        await mergeJob(job.id);
+                        setMergeError("");
+                        toast.success(`Merged PR #${job.prNumber} to main — Vercel will deploy`);
+                      } catch (err) {
+                        const msg = String(err instanceof Error ? err.message : err) || "Could not merge the PR";
+                        setMergeError(msg);
+                        toast.error(msg);
+                      } finally {
+                        setMerging(false);
+                      }
+                    }}
+                    className="flex items-center gap-1 p-1.5 rounded text-[#a855f7] hover:text-[#c084fc] transition-colors disabled:opacity-40"
+                    title={`Merge PR #${job.prNumber} into main`}
+                  >
+                    <GitMerge className="w-4 h-4" /> <span className="font-data text-[10px] uppercase">{merging ? "Merging…" : "Merge"}</span>
+                  </button>
+                )}
+                {!job.prNumber && job.worktreePath && !job.mergedToMain && (
+                  <button
+                    type="button"
+                    disabled={pushing || job.pushState === "pushing"}
+                    onClick={async () => {
+                      setPushing(true);
+                      try {
+                        await retryPush(job.id);
+                        toast.info("Pushing — watch the push chip");
+                      } catch (err) {
+                        toast.error(String(err instanceof Error ? err.message : err) || "Failed to push");
+                      } finally {
+                        setPushing(false);
+                      }
+                    }}
+                    className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] transition-colors disabled:opacity-40"
+                    title="Push to main"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <button type="submit" disabled={(!reply.trim() && !attachedFiles.length) || sending} className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] disabled:opacity-30 transition-colors" title="Send"><Send className="w-4 h-4" /></button>
+            </div>
           </form>
         </div>
       )}
