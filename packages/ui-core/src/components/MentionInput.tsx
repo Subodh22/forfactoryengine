@@ -50,7 +50,7 @@ export function MentionInput({ jobId, value, onChange, onSubmit, onPaste, placeh
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [value]);
 
   function refreshMenu(text: string, caret: number) {
@@ -146,7 +146,7 @@ export function MentionInput({ jobId, value, onChange, onSubmit, onPaste, placeh
       <textarea
         ref={ref}
         value={value}
-        rows={1}
+        rows={2}
         autoFocus={autoFocus}
         placeholder={placeholder}
         onPaste={onPaste}
@@ -155,7 +155,7 @@ export function MentionInput({ jobId, value, onChange, onSubmit, onPaste, placeh
         onClick={(e) => refreshMenu((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart)}
         onKeyDown={onKeyDown}
         onBlur={() => setTimeout(() => setMenu(null), 120)}
-        className="w-full resize-none bg-paper border border-[#332f28] rounded-md px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:outline-none focus:border-[#b08a3e] transition-colors leading-relaxed"
+        className="w-full resize-none bg-paper border border-[#332f28] rounded-md px-3 py-2.5 font-mono text-[13px] text-ink placeholder:text-muted focus:outline-none focus:border-[#b08a3e] transition-colors leading-relaxed"
       />
     </div>
   );
