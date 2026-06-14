@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { LayoutGrid, Clock, Plus, ChevronRight, GitBranch, Folder, Settings, Trash2 } from "lucide-react";
+import { LayoutGrid, Clock, Plus, ChevronRight, GitMerge, Folder, Settings, Trash2, Check, Loader2, CircleDot, AlertCircle, Pause, X } from "lucide-react";
 import { toast } from "sonner";
 import { removeJobCascade } from "@/lib/mutations";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,21 +39,63 @@ interface Props {
   width?: number;
 }
 
-const STATUS_DOT: Record<JobStatus, string> = {
-  pending: "#9a9388",
-  queued: "#e0a82e",
-  running: "#4ade80",
-  delegating: "#4ade80",
-  clarifying: "#e0a82e",
-  plan_review: "#e0a82e",
-  waiting_for_input: "#e0a82e",
-  completed: "#4ade80",
-  failed: "#f4604f",
-  cancelled: "#6b6559",
-};
-
-function dotPulse(s: JobStatus): boolean {
-  return s === "running" || s === "delegating" || s === "waiting_for_input" || s === "clarifying";
+function StatusIcon({ status, merged }: { status: JobStatus; merged?: boolean }) {
+  if (status === "completed" && merged) {
+    return (
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#a855f7]/15">
+        <GitMerge className="w-3 h-3 text-[#a855f7]" />
+      </span>
+    );
+  }
+  if (status === "completed") {
+    return (
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#4ade80]/15">
+        <Check className="w-3 h-3 text-[#4ade80]" />
+      </span>
+    );
+  }
+  if (status === "running" || status === "delegating") {
+    return (
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#4ade80]/10">
+        <Loader2 className="w-3 h-3 text-[#4ade80] animate-spin" />
+      </span>
+    );
+  }
+  if (status === "waiting_for_input" || status === "clarifying") {
+    return (
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#e0a82e]/15">
+        <CircleDot className="w-3 h-3 text-[#e0a82e] animate-pulse" />
+      </span>
+    );
+  }
+  if (status === "plan_review") {
+    return (
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#e0a82e]/15">
+        <Pause className="w-3 h-3 text-[#e0a82e]" />
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#f4604f]/15">
+        <AlertCircle className="w-3 h-3 text-[#f4604f]" />
+      </span>
+    );
+  }
+  if (status === "cancelled") {
+    return (
+      <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded bg-[#6b6559]/15">
+        <X className="w-3 h-3 text-[#6b6559]" />
+      </span>
+    );
+  }
+  // pending, queued
+  return (
+    <span
+      className="w-2 h-2 rounded-full flex-shrink-0"
+      style={{ backgroundColor: status === "queued" ? "#e0a82e" : "#9a9388" }}
+    />
+  );
 }
 
 function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
@@ -138,12 +180,14 @@ function ProjectTree({
                   title={ws.title}
                   className="flex items-center gap-2 pl-2 pr-1.5 py-1 text-left min-w-0 flex-1 overflow-hidden"
                 >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotPulse(ws.status) ? "animate-pulse" : ""}`}
-                    style={{ backgroundColor: STATUS_DOT[ws.status] }}
-                  />
-                  <GitBranch className="w-3 h-3 flex-shrink-0 opacity-50" />
-                  <span className="text-[12.5px] truncate min-w-0">{ws.title || "Untitled"}</span>
+                  <StatusIcon status={ws.status} merged={ws.mergedToMain} />
+                  <span className={`text-[12.5px] truncate min-w-0 flex-1 ${ws.status === "completed" && ws.mergedToMain ? "text-ink/40 line-through decoration-ink/20" : ""}`}>{ws.title || "Untitled"}</span>
+                  {(ws.status === "running" || ws.status === "delegating") && (
+                    <span className="flex-shrink-0 font-data text-[9px] tracking-wider uppercase text-[#4ade80] px-1 py-0.5 rounded bg-[#4ade80]/10">RUN</span>
+                  )}
+                  {ws.status === "completed" && ws.mergedToMain && (
+                    <span className="flex-shrink-0 font-data text-[9px] tracking-wider uppercase text-[#a855f7]/70 px-1 py-0.5 rounded bg-[#a855f7]/10">MRG</span>
+                  )}
                 </button>
                 <button
                   onClick={async (e) => {
