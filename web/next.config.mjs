@@ -6,6 +6,8 @@ const nextConfig = {
   // talks to no database directly, so no server-only externals are needed.
   // Pin the tracing root to this app (the monorepo has multiple lockfiles).
   outputFileTracingRoot: import.meta.dirname,
+  // ui-core lives outside web/ — tell Next.js/SWC to transpile its TSX sources.
+  transpilePackages: ["@factory/ui-core"],
   // All components live in packages/ui-core, shared with the Vite app (ui/).
   // tsconfig paths cover the type-checker; this covers webpack resolution.
   webpack: (config) => {
