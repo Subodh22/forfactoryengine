@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench, GitMerge } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench, GitMerge, X } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
@@ -104,6 +104,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
   const [cancelling, setCancelling] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
   const addFiles = useCallback(async (files: FileList | File[], target: React.Dispatch<React.SetStateAction<string[]>> = setAttachedFiles) => {
@@ -414,6 +415,34 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
           {isDelegating && <p className="font-data text-[10px] uppercase text-muted mb-2">Talk to Claude about this epic — opens a session in the integration branch</p>}
           {isRunning && <p className="font-data text-[10px] uppercase text-muted mb-2">Message will be delivered when Claude finishes this turn</p>}
           {isFinished && <p className="font-data text-[10px] uppercase text-muted mb-2">Continue the conversation — resumes this job&apos;s session</p>}
+          {mergeError && (
+            <div className="mb-2 rounded-md border border-[#f4604f]/60 bg-[#f4604f]/10 px-2.5 py-2 flex items-start gap-2">
+              <span className="font-data text-[10px] text-[#f4604f] flex-1 min-w-0 leading-relaxed">Merge failed: {mergeError}</span>
+              <button
+                type="button"
+                onClick={async () => {
+                  const errText = mergeError;
+                  setMergeError("");
+                  setActiveTab("chat");
+                  const prompt = [
+                    `Merging this job's PR #${job.prNumber} into the default branch failed:`,
+                    "",
+                    errText,
+                    "",
+                    "Troubleshoot and fix it so the PR can merge: fetch and rebase the latest default branch into this PR's branch, resolve any merge conflicts (keep every feature working — don't drop changes), and push the branch. If CI must pass first, make it green. Tell me when it's ready and I'll merge.",
+                  ].join("\n");
+                  addMessage({ id: `${Date.now()}-u`, role: "user", text: `Troubleshoot the failed merge:\n${errText}` });
+                  try { await sendReply(job.id, prompt, []); }
+                  catch (e) { toast.error(String(e instanceof Error ? e.message : e) || "Could not start troubleshooting"); }
+                }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md font-data text-[10px] uppercase bg-[#a855f7] text-white hover:brightness-110 transition-all flex-shrink-0"
+                title="Resume Claude on this job to diagnose and fix the merge failure"
+              >
+                <Wrench className="w-2.5 h-2.5" /> Troubleshoot with Claude
+              </button>
+              <button type="button" onClick={() => setMergeError("")} className="text-muted hover:text-ink flex-shrink-0" title="Dismiss"><X className="w-3 h-3" /></button>
+            </div>
+          )}
           {attachedFiles.length > 0 && (
             <div className="flex gap-2 mb-2 flex-wrap">{attachedFiles.map((src, i) => <AttachmentPreview key={i} src={src} size={56} onRemove={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))} />)}</div>
           )}
@@ -430,9 +459,12 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
                   setMerging(true);
                   try {
                     await mergeJob(job.id);
+                    setMergeError("");
                     toast.success(`Merged PR #${job.prNumber} to main — Vercel will deploy`);
                   } catch (err) {
-                    toast.error(String(err instanceof Error ? err.message : err) || "Could not merge the PR");
+                    const msg = String(err instanceof Error ? err.message : err) || "Could not merge the PR";
+                    setMergeError(msg);
+                    toast.error(msg);
                   } finally {
                     setMerging(false);
                   }
