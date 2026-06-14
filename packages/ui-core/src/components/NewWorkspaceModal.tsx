@@ -109,9 +109,9 @@ export function NewWorkspaceModal({ projectId, onClose, onJobCreated }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-[15vh] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-paper border border-[#332f28] rounded-xl brutal-shadow w-full max-w-[560px]" onKeyDown={onKeyDown}>
+      <div className="bg-paper border border-[#332f28] rounded-xl brutal-shadow w-full max-w-[680px]" onKeyDown={onKeyDown}>
         {/* Project selector row */}
-        <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+        <div className="flex items-center gap-2 px-5 pt-5 pb-3">
           <div ref={pickerRef} className="relative">
             <button
               onClick={() => setShowProjectPicker((v) => !v)}
@@ -141,7 +141,7 @@ export function NewWorkspaceModal({ projectId, onClose, onJobCreated }: Props) {
         </div>
 
         {/* Prompt input */}
-        <div className="px-4 pb-2">
+        <div className="px-5 pb-3">
           {attachments.length > 0 && (
             <div className="flex gap-2 flex-wrap mb-2">
               {attachments.map((src, i) => <AttachmentPreview key={i} src={src} onRemove={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} />)}
@@ -153,13 +153,13 @@ export function NewWorkspaceModal({ projectId, onClose, onJobCreated }: Props) {
             onChange={(e) => setPrompt(e.target.value)}
             onPaste={onPaste}
             placeholder="What do you want to work on?"
-            rows={2}
-            className="w-full resize-none bg-transparent text-[14px] text-ink leading-[1.5] placeholder:text-muted focus:outline-none"
+            rows={4}
+            className="w-full resize-none bg-transparent text-[15px] text-ink leading-[1.6] placeholder:text-muted focus:outline-none"
           />
         </div>
 
         {/* Bottom bar: controls + create */}
-        <div className="flex items-center gap-2 px-4 py-3 border-t border-[#332f28]">
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-[#332f28]">
           <button onClick={() => fileRef.current?.click()} className="text-muted hover:text-ink transition-colors p-1" title="Attach files">
             <Paperclip className="w-4 h-4" />
           </button>
