@@ -21,6 +21,21 @@ const RES = app.isPackaged
 const ENGINE_BUNDLE = path.join(RES, "engine", "factory.mjs");
 const UI_DIST = path.join(RES, "ui");
 
+// Optional local config so a desktop install can point at a shared Turso DB (or
+// set ANTHROPIC_API_KEY, GH_TOKEN, etc.) without launching from a terminal.
+// Parsed KEY=VALUE lines, merged into the engine's env at launch. Kept OUT of the
+// app bundle — lives in the user's home/app-data dir.
+function loadEnvFile(file) {
+  const env = {};
+  try {
+    for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (m) env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+    }
+  } catch { /* no file — fine, fall back to a local DB */ }
+  return env;
+}
+
 let mainWindow = null;
 let tray = null;
 let engine = null;
@@ -86,9 +101,17 @@ async function startEngine() {
   const workspace = process.env.FACTORY_WORKSPACE || path.join(app.getPath("userData"), "repos");
   fs.mkdirSync(workspace, { recursive: true });
 
+  // ~/.factory/.env first, then the app's user-data .env (latter wins). Provides
+  // TURSO_* so the app shares the same cloud DB as the dev engine, etc.
+  const fileEnv = {
+    ...loadEnvFile(path.join(require("node:os").homedir(), ".factory", ".env")),
+    ...loadEnvFile(path.join(app.getPath("userData"), ".env")),
+  };
+
   engine = spawn(node, [ENGINE_BUNDLE], {
     env: {
       ...process.env,
+      ...fileEnv,
       PORT: String(port),
       FACTORY_HOST: "127.0.0.1",           // desktop app is always local-only
       FACTORY_UI_DIST: UI_DIST,

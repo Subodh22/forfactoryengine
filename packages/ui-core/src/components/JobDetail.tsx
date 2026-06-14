@@ -473,7 +473,6 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
             </div>
             <div className="flex items-center justify-between px-3 pb-3 pt-1">
               <div className="flex items-center gap-1">
-                <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] transition-colors" title="Capture screenshot"><Monitor className="w-4 h-4" /></button>
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] transition-colors" title="Attach files"><Paperclip className="w-4 h-4" /></button>
                 {job.prNumber > 0 && !job.mergedToMain && (
                   <button
