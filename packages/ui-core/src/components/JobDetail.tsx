@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench, GitMerge, X, Check } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench, GitMerge, X, Check, ClipboardList } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
@@ -106,6 +106,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState("");
   const [approving, setApproving] = useState(false);
+  const [planMode, setPlanMode] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const addFiles = useCallback(async (files: FileList | File[], target: React.Dispatch<React.SetStateAction<string[]>> = setAttachedFiles) => {
@@ -180,7 +181,12 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
         toast.success("Added to prompt");
       } else {
         addMessage({ id: `${Date.now()}-u`, role: "user", text, images: images.length ? images : undefined });
-        await sendReply(jobId, text, images);
+        // Plan-first: ask Claude to propose a plan and hold off on changes. The
+        // bubble shows what you typed; the agent receives the planning wrapper.
+        const outgoing = planMode
+          ? `${text}\n\n[Plan first] Do NOT edit any files or run commands yet. Propose a concise step-by-step plan and list the files you'd change, then wait for my approval — I'll reply to proceed.`
+          : text;
+        await sendReply(jobId, outgoing, images);
       }
     } catch (err) {
       toast.error(String(err instanceof Error ? err.message : err) || "Could not reach the engine");
@@ -497,12 +503,20 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
                 onSubmit={() => handleReply()}
                 onPaste={onPaste}
                 autoFocus={isWaiting}
-                placeholder="Ask to make changes, @mention files, run /commands"
+                placeholder={planMode ? "Plan first — Claude proposes a plan, no code changes yet" : "Ask to make changes, @mention files, run /commands"}
               />
             </div>
             <div className="flex items-center justify-between px-3 pb-3 pt-1">
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] transition-colors" title="Attach files"><Paperclip className="w-4 h-4" /></button>
+                <button
+                  type="button"
+                  onClick={() => setPlanMode((v) => !v)}
+                  title="Plan first — Claude proposes a plan before changing anything. Toggle off to let it execute."
+                  className={`flex items-center gap-1 p-1.5 rounded transition-colors ${planMode ? "text-[#b8860b] bg-[#b8860b]/15" : "text-[#8a8580] hover:text-[#ccc8c0]"}`}
+                >
+                  <ClipboardList className="w-4 h-4" />{planMode && <span className="font-data text-[10px] uppercase">Plan</span>}
+                </button>
                 {job.prNumber > 0 && !job.mergedToMain && (
                   <button
                     type="button"
