@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, Monitor, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench } from "lucide-react";
+import { ExternalLink, GitBranch, Clock, Coins, Paperclip, RotateCcw, Send, ChevronDown, ChevronUp, Square, UploadCloud, Play, Wrench } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { PushChip } from "./PushChip";
 import { DeployChip } from "./DeployChip";
@@ -120,22 +120,6 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
     if (files.length) addFiles(files);
   }
 
-  const captureScreen = useCallback(async (target: React.Dispatch<React.SetStateAction<string[]>>) => {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const track = stream.getVideoTracks()[0];
-      const video = document.createElement("video");
-      video.srcObject = stream;
-      await video.play();
-      await new Promise((r) => requestAnimationFrame(r));
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext("2d")!.drawImage(video, 0, 0);
-      track.stop();
-      target((prev) => [...prev, canvas.toDataURL("image/png")]);
-    } catch { /* cancelled */ }
-  }, []);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -286,7 +270,6 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
             <div className="flex items-center gap-2">
               <input ref={redoFileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files, setRedoImages); e.target.value = ""; }} />
               <button type="button" onClick={() => redoFileInputRef.current?.click()} className="px-2 py-1.5 bg-concrete border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors" title="Attach image"><Paperclip className="w-3.5 h-3.5" /></button>
-              <button type="button" onClick={() => captureScreen(setRedoImages)} className="px-2 py-1.5 bg-concrete border border-[#332f28] text-ink hover:bg-ink hover:text-concrete transition-colors" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
               <button type="submit" disabled={redoing} className="px-3 py-1.5 bg-ink text-concrete border border-[#332f28] disabled:opacity-40 font-data text-[10px] uppercase flex items-center gap-1 brutal-press"><RotateCcw className="w-3 h-3" />{redoing ? "Queuing…" : "Run again"}</button>
               <button type="button" onClick={() => setRedoOpen(false)} className="px-2 py-1.5 font-data text-[10px] uppercase text-muted hover:text-ink transition-colors">Cancel</button>
             </div>
@@ -432,8 +415,7 @@ export function JobDetail({ jobId, onRedo, hideChanges }: Props) {
           <form onSubmit={handleReply} className="flex gap-2 items-end">
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <button type="button" onClick={() => fileInputRef.current?.click()} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Attach files"><Paperclip className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => captureScreen(setAttachedFiles)} className="px-2 py-2 rounded-md bg-paper border border-[#332f28] text-ink hover:bg-concrete-2 transition-colors flex-shrink-0" title="Capture screenshot"><Monitor className="w-3.5 h-3.5" /></button>
-            {isFinished && !job.pushState && job.worktreePath && (
+            {!job.pushState && job.worktreePath && (
               <button
                 type="button"
                 disabled={pushing}
