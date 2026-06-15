@@ -201,7 +201,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
         needsApproval: planFirst || undefined,
         model: model || undefined,
         effort: effort || undefined,
-        autoRun: autoRun || isEpic,
+        autoRun: planFirst ? false : (autoRun || isEpic),
       });
       addJob(job);
       toast.success(

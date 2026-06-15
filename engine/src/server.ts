@@ -373,8 +373,9 @@ export function startServer(port: number): http.Server {
         // queue entirely — it sits in "delegating" while the user adds tasks and
         // runs/ticks them one by one.
         const manual = b.kind === "epic" && b.manual;
-        // Epics must always be queued so the worker plans & splits them.
-        const wantsRun = !manual && (b.autoRun || b.status === "queued" || b.kind === "epic");
+        // Epics must always be queued so the worker plans & splits them —
+        // except plan-first (needsApproval) epics which wait in pending.
+        const wantsRun = !manual && (b.autoRun || b.status === "queued" || (b.kind === "epic" && !b.needsApproval));
         const job = await createJob({
           id: b.id || undefined, // client-provided id for optimistic UI
           projectId: b.projectId, title, prompt: b.prompt,
