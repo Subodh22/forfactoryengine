@@ -33,6 +33,7 @@ export const CreateJobBodySchema = z.object({
   model: z.string().default(""),
   effort: JobEffortSchema.default(""),
   needsApproval: z.boolean().default(false),
+  planOnly: z.boolean().default(false),
 });
 export type CreateJobBody = z.infer<typeof CreateJobBodySchema>;
 

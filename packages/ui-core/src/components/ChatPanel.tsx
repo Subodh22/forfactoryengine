@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Plus, Monitor, MessageSquare, ListTree, Send,
-  Sparkles, Zap, ChevronDown, ClipboardList, Check, Star,
+  Sparkles, Zap, ChevronDown, ClipboardList, Check, Star, FileSearch,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentPreview } from "@/components/AttachmentPreview";
@@ -120,6 +120,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
   const [autoRun, setAutoRun] = useState(true);
   const [delegate, setDelegate] = useState(false);
   const [planFirst, setPlanFirst] = useState(false);
+  const [planOnly, setPlanOnly] = useState(false);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
   const [loading, setLoading] = useState(false);
@@ -199,13 +200,15 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
         images: attachments,
         kind: isEpic ? "epic" : undefined,
         needsApproval: planFirst || undefined,
+        planOnly: planOnly || undefined,
         model: model || undefined,
         effort: effort || undefined,
         autoRun: planFirst ? false : (autoRun || isEpic),
       });
       addJob(job);
       toast.success(
-        planFirst ? "Planning — review the plan, then Approve & Build"
+        planOnly ? "Planning job queued"
+        : planFirst ? "Planning — review the plan, then Approve & Build"
         : delegate ? "Epic queued — the engine will plan it"
         : autoRun ? "Queued — the engine will run it"
         : "Job created",
@@ -302,6 +305,15 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
               <ClipboardList className="w-3 h-3" />
             </button>
 
+            {/* Plan only toggle — agent analyses but does not edit any files */}
+            <button
+              onClick={() => setPlanOnly((v) => !v)}
+              title="Plan only — agent analyses and plans but does not edit any files"
+              className={`flex items-center gap-1 px-2 py-1 rounded-md font-data text-[11px] transition-colors ${planOnly ? "text-[#e0a32e] bg-[#e0a32e]/10" : "text-muted hover:text-ink hover:bg-concrete-2"}`}
+            >
+              <FileSearch className="w-3 h-3" />
+            </button>
+
             {/* Effort selector */}
             <div className="relative" ref={effortMenuRef}>
               <button
@@ -380,7 +392,7 @@ export function ChatPanel({ projectId, onJobCreated }: Props) {
           Auto-run {autoRun ? "on" : "off"}
         </button>
         <span className="font-data text-[10px] text-muted/40">
-          {planFirst ? "Plan-first mode" : delegate ? "Delegate mode" : "Cmd+Enter to send"}
+          {planOnly ? "Plan only mode" : planFirst ? "Plan-first mode" : delegate ? "Delegate mode" : "Cmd+Enter to send"}
         </span>
       </div>
     </div>

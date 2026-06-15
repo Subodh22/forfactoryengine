@@ -17,6 +17,7 @@ export interface CreateJobInput {
   effort?: string;
   autoRun?: boolean;
   needsApproval?: boolean; // guided create: clarify + plan approval before building
+  planOnly?: boolean;      // plan only: agent analyses but does not edit files
   manual?: boolean;        // manual plan: hand-authored epic, no AI planner / queue
   assignee?: JobAssignee;
 }

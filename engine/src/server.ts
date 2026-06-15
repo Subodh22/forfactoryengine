@@ -387,6 +387,7 @@ export function startServer(port: number): http.Server {
           model: b.model,
           effort: b.effort,
           needsApproval: b.needsApproval, // guided create → clarify + plan gate
+          planOnly: b.planOnly,
         });
         broadcast({ type: "job.created", job });
         if (wantsRun) enqueue(job.id);

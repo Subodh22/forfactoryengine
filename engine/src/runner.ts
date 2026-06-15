@@ -401,7 +401,10 @@ export async function startJob(jobId: string): Promise<void> {
     const repoMap = buildRepoMap(worktreePath);
     const effortNote = job.effort ? `Apply ${job.effort} reasoning effort to this task.\n\n` : "";
     const resumeNote = resumeId ? `You are continuing work on this project in a new worktree at: ${worktreePath}\n\n` : "";
-    const systemContext = `${baseRules}${claudeHint}${effortNote}${resumeNote}${REPLY_FORMAT}${repoMap}\n---\n\n`;
+    const planOnlyNote = job.planOnly
+      ? "PLAN ONLY MODE: Do NOT edit, create, or delete any files. Do NOT write any code. Your job is to analyze the codebase, understand the task, and produce a detailed plan describing exactly what changes should be made, which files should be modified, what the approach should be, and any architectural considerations. Output your plan as structured text. Do not use the Edit, Write, or Bash tools to modify files.\n\n"
+      : "";
+    const systemContext = `${baseRules}${claudeHint}${effortNote}${resumeNote}${planOnlyNote}${REPLY_FORMAT}${repoMap}\n---\n\n`;
 
     const promptWithImages = buildMessageWithAttachments(job.prompt, job.images, worktreePath);
     let turn = await session.sendMessage(systemContext + promptWithImages);

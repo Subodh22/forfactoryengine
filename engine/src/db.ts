@@ -115,6 +115,7 @@ export interface Job {
   outputTokens: number;
   costUsd: number;
   mergedToMain: boolean;
+  planOnly: boolean;
   archived: boolean;
   startedAt: number;
   completedAt: number;
@@ -233,6 +234,7 @@ export async function initSchema(): Promise<void> {
     ["assignee", "TEXT NOT NULL DEFAULT ''"],
     ["commit_sha", "TEXT NOT NULL DEFAULT ''"],
     ["archived", "INTEGER NOT NULL DEFAULT 0"],
+    ["plan_only", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [col, def] of jobCols) {
     try { await db.execute(`ALTER TABLE jobs ADD COLUMN ${col} ${def}`); } catch { /* exists */ }
@@ -443,6 +445,7 @@ function rowToJob(r: Row): Job {
     outputTokens: Number(r.output_tokens ?? 0),
     costUsd: Number(r.cost_usd ?? 0),
     mergedToMain: Boolean(Number(r.merged_to_main ?? 0)),
+    planOnly: Boolean(Number(r.plan_only ?? 0)),
     archived: Boolean(Number(r.archived ?? 0)),
     startedAt: Number(r.started_at ?? 0),
     completedAt: Number(r.completed_at ?? 0),
@@ -478,7 +481,7 @@ export async function createJob(input: {
   images?: string[]; status?: JobStatus; kind?: JobKind; parentJobId?: string;
   priority?: number; touchedPaths?: string[]; blockedBy?: string[];
   model?: string; effort?: JobEffort; needsApproval?: boolean;
-  assignee?: JobAssignee; delegatorPlan?: string;
+  assignee?: JobAssignee; delegatorPlan?: string; planOnly?: boolean;
 }): Promise<Job> {
   const job: Job = {
     id: input.id || crypto.randomUUID(),
@@ -522,19 +525,20 @@ export async function createJob(input: {
     outputTokens: 0,
     costUsd: 0,
     mergedToMain: false,
+    planOnly: input.planOnly ?? false,
     archived: false,
     startedAt: 0,
     completedAt: 0,
     createdAt: Date.now(),
   };
   await db.execute({
-    sql: `INSERT INTO jobs (id, project_id, title, prompt, images, status, kind, parent_job_id, priority, touched_paths, blocked_by, assignee, delegator_plan, model, effort, needs_approval, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO jobs (id, project_id, title, prompt, images, status, kind, parent_job_id, priority, touched_paths, blocked_by, assignee, delegator_plan, model, effort, needs_approval, plan_only, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       job.id, job.projectId, job.title, job.prompt, JSON.stringify(job.images), job.status,
       job.kind, job.parentJobId, job.priority, JSON.stringify(job.touchedPaths),
       JSON.stringify(job.blockedBy), job.assignee, job.delegatorPlan, job.model, job.effort,
-      job.needsApproval ? 1 : 0, job.createdAt,
+      job.needsApproval ? 1 : 0, job.planOnly ? 1 : 0, job.createdAt,
     ],
   });
   return job;
@@ -552,6 +556,7 @@ const JOB_COLUMNS: Record<string, string> = {
   startedAt: "started_at", completedAt: "completed_at", inputTokens: "input_tokens",
   outputTokens: "output_tokens", costUsd: "cost_usd", assignee: "assignee",
   mergedToMain: "merged_to_main",
+  planOnly: "plan_only",
   archived: "archived",
 };
 const JOB_JSON_COLUMNS: Record<string, string> = {
