@@ -614,10 +614,10 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
                         setPushing(false);
                       }
                     }}
-                    className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] transition-colors disabled:opacity-40"
+                    className="flex items-center gap-1 p-1.5 rounded text-[#4ade80] hover:text-[#86efac] transition-colors disabled:opacity-40"
                     title="Push to main"
                   >
-                    <UploadCloud className="w-4 h-4" />
+                    <UploadCloud className="w-4 h-4" /> <span className="font-data text-[10px] uppercase">{pushing ? "Pushing…" : "Push"}</span>
                   </button>
                 )}
               </div>
@@ -631,15 +631,37 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
         <div className="border-t border-[#f4604f]/60 bg-[#f4604f]/15 flex-shrink-0 px-4 py-3">
           <div className="flex items-center justify-between gap-3 mb-1.5">
             <span className="font-data text-[10px] font-bold text-[#f4604f] uppercase tracking-widest">Push needs your help</span>
-            <button
-              onClick={async () => { await retryPush(job.id); toast.info("Retrying push — watch the push chip"); }}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-md font-data text-[10px] uppercase border border-[#f4604f] text-[#f4604f] hover:bg-[#f4604f] hover:text-surface-deep transition-colors"
-            >
-              <UploadCloud className="w-2.5 h-2.5" /> Retry Push
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={async () => {
+                  setActiveTab("chat");
+                  const errText = job.pushError || "Push failed";
+                  const prompt = [
+                    `Pushing this job to the remote failed:`,
+                    "",
+                    errText,
+                    "",
+                    "Troubleshoot and fix it so the push can succeed: fetch and rebase the latest default branch, resolve any merge conflicts (keep every feature working — don't drop changes), fix any issues, and tell me when it's ready. Do NOT run git push — the engine handles that. I'll hit Retry Push when you're done.",
+                  ].join("\n");
+                  addMessage({ id: `${Date.now()}-u`, role: "user", text: `Troubleshoot the failed push:\n${errText}` });
+                  try { await sendReply(job.id, prompt, []); }
+                  catch (e) { toast.error(String(e instanceof Error ? e.message : e) || "Could not start troubleshooting"); }
+                }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md font-data text-[10px] uppercase bg-[#a855f7] text-white hover:brightness-110 transition-all"
+                title="Resume Claude on this job to diagnose and fix the push failure"
+              >
+                <Wrench className="w-2.5 h-2.5" /> Troubleshoot with Claude
+              </button>
+              <button
+                onClick={async () => { await retryPush(job.id); toast.info("Retrying push — watch the push chip"); }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md font-data text-[10px] uppercase border border-[#f4604f] text-[#f4604f] hover:bg-[#f4604f] hover:text-surface-deep transition-colors"
+              >
+                <UploadCloud className="w-2.5 h-2.5" /> Retry Push
+              </button>
+            </div>
           </div>
           <pre className="text-xs text-[#f4604f]/80 font-mono whitespace-pre-wrap">{job.pushError}</pre>
-          <p className="font-data text-[10px] uppercase text-muted mt-1.5">The work is committed and safe in its worktree — fix the cause, then retry.</p>
+          <p className="font-data text-[10px] uppercase text-muted mt-1.5">The work is committed and safe in its worktree — fix the cause, then retry, or let Claude troubleshoot.</p>
         </div>
       )}
 
