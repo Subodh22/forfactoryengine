@@ -275,6 +275,25 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
               <Coins className="w-2.5 h-2.5" />${job.costUsd.toFixed(4)} · {(job.inputTokens + job.outputTokens).toLocaleString()} tok
             </span>
           )}
+          {job.inputTokens > 0 && (() => {
+            const cap = 60_000;
+            const pct = Math.min(job.inputTokens / cap, 1);
+            const r = 5;
+            const circ = 2 * Math.PI * r;
+            const color = pct >= 0.9 ? "#d6210f" : pct >= 0.7 ? "#d4a017" : "#3bd16f";
+            return (
+              <span className="flex items-center gap-1 text-muted" title={`Context: ${job.inputTokens.toLocaleString()} / ${cap.toLocaleString()} tokens (${Math.round(pct * 100)}%) — session resets at cap`}>
+                <svg width="14" height="14" viewBox="0 0 14 14">
+                  <circle cx="7" cy="7" r={r} fill="none" stroke="#332f28" strokeWidth="2" />
+                  <circle cx="7" cy="7" r={r} fill="none" stroke={color} strokeWidth="2"
+                    strokeDasharray={`${pct * circ} ${circ}`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 7 7)" />
+                </svg>
+                CTX {Math.round(pct * 100)}%
+              </span>
+            );
+          })()}
           {job.prUrl && (
             <a href={job.prUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-ink underline hover:no-underline">
               <ExternalLink className="w-2.5 h-2.5" />View PR #{job.prNumber}
