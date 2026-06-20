@@ -128,6 +128,9 @@ export const sendReply = (id: string, text: string, images: string[]) =>
 export const approvePlan = (id: string) =>
   api<Job>(`/api/jobs/${id}/approve-plan`, { method: "POST" });
 
+export const compactSession = (id: string) =>
+  api(`/api/jobs/${id}/compact-session`, { method: "POST" });
+
 // ── Projects ─────────────────────────────────────────────────────────────────
 export interface CreateProjectInput {
   name: string;

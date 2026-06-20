@@ -593,6 +593,11 @@ export function cancelJob(jobId: string): void {
   if (i >= 0) queue.splice(i, 1);
 }
 
+/** Clear the cached project session so the next job starts a fresh context. */
+export function compactSession(projectId: string): void {
+  projectSessions.delete(projectId);
+}
+
 export function getActiveJobIds(): string[] {
   return Array.from(new Set([...processing, ...activeSessions.keys()]));
 }

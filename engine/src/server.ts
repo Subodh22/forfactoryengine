@@ -21,7 +21,7 @@ import {
 } from "./api-schemas";
 import { attachWebsocket, broadcast } from "./events";
 import { updateStatus } from "./status";
-import { enqueue, cancelJob, deliverReply } from "./runner";
+import { enqueue, cancelJob, deliverReply, compactSession } from "./runner";
 import { retryPush } from "./push";
 import { reconcileMergedPRs, mergeJobToMain, mergeAllForProject } from "./pr-watch";
 import { readOutput, clearOutput } from "./output-log";
@@ -606,6 +606,15 @@ export function startServer(port: number): http.Server {
           // Progress streams back over the WebSocket as pushState changes.
           void retryPush(id).catch((err) => console.error(`[retry-push] ${id}: ${err}`));
           return sendJson(res, 202, { ok: true });
+        }
+        if (method === "POST" && action === "compact-session") {
+          const job = await getJob(id);
+          if (!job) return sendJson(res, 404, { error: "job not found" });
+          compactSession(job.projectId);
+          await patchJob(id, { sessionId: "" });
+          const updated = await getJob(id);
+          if (updated) broadcast({ type: "job.updated", job: updated });
+          return sendJson(res, 200, { ok: true });
         }
         // Merge this job's open PR into main — awaited so the UI gets the verdict.
         if (method === "POST" && action === "merge") {

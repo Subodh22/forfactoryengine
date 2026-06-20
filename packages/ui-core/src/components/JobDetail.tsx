@@ -14,7 +14,7 @@ import { CheckpointsBar } from "./CheckpointsBar";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { ModelPicker } from "./ChatPanel";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
-import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob, approvePlan, removeJob, patchJob } from "@/lib/mutations";
+import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob, approvePlan, removeJob, patchJob, compactSession } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
 interface Props {
@@ -291,6 +291,23 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
                     transform="rotate(-90 7 7)" />
                 </svg>
                 CTX {Math.round(pct * 100)}%
+                {pct >= 0.7 && !isFinished && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await compactSession(job.id);
+                        toast.success("Session compacted — next turn starts fresh");
+                      } catch (err) {
+                        toast.error(String(err instanceof Error ? err.message : err) || "Failed to compact");
+                      }
+                    }}
+                    className="px-1.5 py-0 font-data text-[9px] uppercase border border-[#332f28] hover:bg-ink hover:text-concrete transition-colors"
+                    style={{ color }}
+                    title="Reset the session so the next turn starts with a fresh context window"
+                  >
+                    Compact
+                  </button>
+                )}
               </span>
             );
           })()}
