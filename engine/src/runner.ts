@@ -122,6 +122,7 @@ interface LiveContext {
   busy: boolean;
   queue: { text: string; images: string[] }[];
   child?: ChildContext;
+  planOnly?: boolean;
 }
 const liveContext = new Map<string, LiveContext>();
 
@@ -420,7 +421,7 @@ export async function startJob(jobId: string): Promise<void> {
       activeSessions.set(jobId, session);
       session.onSessionId((id) => { patchJob(jobId, { sessionId: id }).catch(warn(`save sessionId for ${jobId}`)); });
       session.onChunk((text) => emitOutput(jobId, text));
-      const freshContext = `${baseRules}${claudeHint}${effortNote}${REPLY_FORMAT}${repoMap}\n---\n\n`;
+      const freshContext = `${baseRules}${claudeHint}${effortNote}${planOnlyNote}${REPLY_FORMAT}${repoMap}\n---\n\n`;
       turn = await session.sendMessage(freshContext + promptWithImages);
       await updateUsage(jobId, turn.inputTokens, turn.outputTokens, turn.costUsd);
     }
@@ -508,6 +509,7 @@ async function handleTurnResult({ jobId, title, turn, worktreePath, branch, proj
       liveContext.set(jobId, {
         worktreePath, branch, projectId, project, title,
         busy: existing?.busy ?? false, queue: existing?.queue ?? [], child,
+        planOnly: job.planOnly,
       });
       await updateStatus(jobId, "waiting_for_input");
       log(jobId, "Waiting for your reply — answer in the chat panel to continue.");
@@ -632,7 +634,10 @@ async function drainReplies(jobId: string): Promise<void> {
       const allImages = pending.flatMap((p) => p.images);
       log(jobId, `User replied: "${combined}"`);
       log(jobId, "-".repeat(40));
-      const message = buildMessageWithAttachments(combined, allImages, ctx.worktreePath);
+      const planPrefix = ctx.planOnly
+        ? "PLAN ONLY MODE: Do NOT edit, create, or delete any files. Do NOT write any code. Analyze and produce a detailed plan only.\n\n"
+        : "";
+      const message = buildMessageWithAttachments(planPrefix + combined, allImages, ctx.worktreePath);
       turn = await session.sendMessage(message);
       await updateUsage(jobId, turn.inputTokens, turn.outputTokens, turn.costUsd);
       const sid = session.getSessionId();
@@ -712,6 +717,7 @@ async function continueJob(jobId: string, text: string, images: string[]): Promi
   liveContext.set(jobId, {
     worktreePath, branch, projectId: job.projectId, project, title: job.title,
     busy: false, queue: [{ text, images }], child: childCtx,
+    planOnly: job.planOnly,
   });
   void drainReplies(jobId);
   return true;
