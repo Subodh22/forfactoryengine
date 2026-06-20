@@ -410,7 +410,13 @@ export function startServer(port: number): http.Server {
           // Materialize a hand-authored plan tree under a manual epic.
           const b = await parseBody(req, res, CreateChildrenBodySchema);
           if (!b) return;
-          const ids = await createSubtree(id, b.nodes);
+          let ids: string[];
+          try {
+            ids = await createSubtree(id, b.nodes);
+          } catch (err) {
+            console.error(`[children] failed to create subtree under ${id}:`, err);
+            return sendJson(res, 500, { error: String(err instanceof Error ? err.message : err) });
+          }
           const created = [];
           for (const cid of ids) {
             const j = await getJob(cid);
