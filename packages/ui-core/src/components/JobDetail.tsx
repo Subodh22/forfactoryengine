@@ -133,7 +133,6 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState("");
   const [approving, setApproving] = useState(false);
-  const [planMode, setPlanMode] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const addFiles = useCallback(async (files: FileList | File[], target: React.Dispatch<React.SetStateAction<string[]>> = setAttachedFiles) => {
@@ -234,12 +233,7 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
         toast.success("Added to prompt");
       } else {
         addMessage({ id: `${Date.now()}-u`, role: "user", text, images: images.length ? images : undefined });
-        // Plan-first: ask Claude to propose a plan and hold off on changes. The
-        // bubble shows what you typed; the agent receives the planning wrapper.
-        const outgoing = planMode
-          ? `${text}\n\n[Plan first] Do NOT edit any files or run commands yet. Propose a concise step-by-step plan and list the files you'd change, then wait for my approval — I'll reply to proceed.`
-          : text;
-        await sendReply(jobId, outgoing, images);
+        await sendReply(jobId, text, images);
       }
     } catch (err) {
       toast.error(String(err instanceof Error ? err.message : err) || "Could not reach the engine");
@@ -398,27 +392,6 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
             </button>
           )}
           <span className="flex-1" />
-          <select
-            value={job.model || ""}
-            onChange={async (e) => {
-              try {
-                await patchJob(jobId, { model: e.target.value });
-              } catch {
-                toast.error("Failed to update model");
-              }
-            }}
-            className="font-data text-[10px] uppercase bg-concrete border border-[#332f28] px-1.5 py-0.5 focus:outline-none cursor-pointer text-muted hover:text-ink transition-colors"
-            title="Model used for this job"
-          >
-            <option value="">Default</option>
-            <option value="claude-opus-4-6">Opus 4.6</option>
-            <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-            <option value="claude-sonnet-4-5-20250514">Sonnet 4.5</option>
-            <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-            <option value="opus">Opus (latest)</option>
-            <option value="sonnet">Sonnet (latest)</option>
-            <option value="haiku">Haiku (latest)</option>
-          </select>
           {isRunning && isStuck ? (
             <span className="flex items-center gap-1.5 font-data text-[10px] text-red-400"><span className="w-1.5 h-1.5 bg-red-400 animate-pulse flex-shrink-0" />no output {silentSecs}s</span>
           ) : isRunning && isThinking ? (
@@ -561,7 +534,7 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
                 onSubmit={() => handleReply()}
                 onPaste={onPaste}
                 autoFocus={isWaiting}
-                placeholder={planMode ? "Plan first — Claude proposes a plan, no code changes yet" : "Ask to make changes, @mention files, run /commands"}
+                placeholder={job.planOnly ? "Plan only — Claude analyses and plans, no code changes" : "Ask to make changes, @mention files, run /commands"}
               />
             </div>
             <div className="flex items-center justify-between px-3 pb-3 pt-1">
@@ -569,12 +542,39 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded text-[#8a8580] hover:text-[#ccc8c0] transition-colors" title="Attach files"><Paperclip className="w-4 h-4" /></button>
                 <button
                   type="button"
-                  onClick={() => setPlanMode((v) => !v)}
-                  title="Plan first — Claude proposes a plan before changing anything. Toggle off to let it execute."
-                  className={`flex items-center gap-1 p-1.5 rounded transition-colors ${planMode ? "text-[#b8860b] bg-[#b8860b]/15" : "text-[#8a8580] hover:text-[#ccc8c0]"}`}
+                  onClick={async () => {
+                    try {
+                      await patchJob(jobId, { planOnly: !job.planOnly });
+                    } catch {
+                      toast.error("Failed to toggle plan mode");
+                    }
+                  }}
+                  title="Plan only — agent analyses and plans but does not edit any files. Toggle off to let it execute."
+                  className={`flex items-center gap-1 p-1.5 rounded transition-colors ${job.planOnly ? "text-[#b8860b] bg-[#b8860b]/15" : "text-[#8a8580] hover:text-[#ccc8c0]"}`}
                 >
-                  <ClipboardList className="w-4 h-4" />{planMode && <span className="font-data text-[10px] uppercase">Plan</span>}
+                  <ClipboardList className="w-4 h-4" />{job.planOnly && <span className="font-data text-[10px] uppercase">Plan</span>}
                 </button>
+                <select
+                  value={job.model || ""}
+                  onChange={async (e) => {
+                    try {
+                      await patchJob(jobId, { model: e.target.value });
+                    } catch {
+                      toast.error("Failed to update model");
+                    }
+                  }}
+                  className="font-data text-[10px] uppercase bg-transparent border-none px-1 py-1 focus:outline-none cursor-pointer text-[#8a8580] hover:text-[#ccc8c0] transition-colors"
+                  title="Model used for this job"
+                >
+                  <option value="">Default model</option>
+                  <option value="claude-opus-4-6">Opus 4.6</option>
+                  <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+                  <option value="claude-sonnet-4-5-20250514">Sonnet 4.5</option>
+                  <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+                  <option value="opus">Opus (latest)</option>
+                  <option value="sonnet">Sonnet (latest)</option>
+                  <option value="haiku">Haiku (latest)</option>
+                </select>
                 {job.prNumber > 0 && !job.mergedToMain && (
                   <button
                     type="button"

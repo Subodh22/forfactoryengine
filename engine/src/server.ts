@@ -520,6 +520,7 @@ export function startServer(port: number): http.Server {
           if (typeof b.model === "string") fields.model = b.model;
           if (typeof b.priority === "number") fields.priority = b.priority;
           if (typeof b.archived === "boolean") fields.archived = b.archived;
+          if (typeof b.planOnly === "boolean") fields.planOnly = b.planOnly;
           if (typeof b.parentJobId === "string") {
             // Re-parent (indent / outdent). Guard against self-parenting,
             // cycles, and moving a task that's mid-flight.

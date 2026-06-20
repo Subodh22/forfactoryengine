@@ -45,6 +45,7 @@ export const PatchJobBodySchema = z.object({
   parentJobId: z.string().optional(),
   archived: z.boolean().optional(),
   model: z.string().optional(),
+  planOnly: z.boolean().optional(),
 });
 export type PatchJobBody = z.infer<typeof PatchJobBodySchema>;
 
