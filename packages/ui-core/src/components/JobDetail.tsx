@@ -12,6 +12,7 @@ import { DiffViewer } from "./DiffViewer";
 import { MentionInput } from "./MentionInput";
 import { CheckpointsBar } from "./CheckpointsBar";
 import { ActivityTimeline } from "./ActivityTimeline";
+import { ModelPicker } from "./ChatPanel";
 import { useJob, useJobOutput, useJobChat } from "@/lib/data";
 import { appendPrompt, redoJob, sendReply, cancelJob, cancelEpic, retryPush, queueJob, fixDeploy, mergeJob, approvePlan, removeJob, patchJob } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
@@ -554,27 +555,16 @@ export function JobDetail({ jobId, onRedo, onDelete, hideChanges }: Props) {
                 >
                   <ClipboardList className="w-4 h-4" />{job.planOnly && <span className="font-data text-[10px] uppercase">Plan</span>}
                 </button>
-                <select
+                <ModelPicker
                   value={job.model || ""}
-                  onChange={async (e) => {
+                  onChange={async (v) => {
                     try {
-                      await patchJob(jobId, { model: e.target.value });
+                      await patchJob(jobId, { model: v });
                     } catch {
                       toast.error("Failed to update model");
                     }
                   }}
-                  className="font-data text-[10px] uppercase bg-transparent border-none px-1 py-1 focus:outline-none cursor-pointer text-[#8a8580] hover:text-[#ccc8c0] transition-colors"
-                  title="Model used for this job"
-                >
-                  <option value="">Default model</option>
-                  <option value="claude-opus-4-6">Opus 4.6</option>
-                  <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-                  <option value="claude-sonnet-4-5-20250514">Sonnet 4.5</option>
-                  <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-                  <option value="opus">Opus (latest)</option>
-                  <option value="sonnet">Sonnet (latest)</option>
-                  <option value="haiku">Haiku (latest)</option>
-                </select>
+                />
                 {job.prNumber > 0 && !job.mergedToMain && (
                   <button
                     type="button"

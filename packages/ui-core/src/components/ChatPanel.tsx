@@ -11,14 +11,14 @@ import { useFactory, useProject } from "@/lib/data";
 import { createJob } from "@/lib/mutations";
 import { uploadFiles } from "@/lib/api";
 
-interface ModelOption {
+export interface ModelOption {
   value: string;
   label: string;
   badge?: "new" | "popular";
   group: string;
 }
 
-const MODEL_OPTIONS: ModelOption[] = [
+export const MODEL_OPTIONS: ModelOption[] = [
   { value: "", label: "Default", group: "Claude Code" },
   { value: "claude-opus-4-8", label: "Opus 4.8", badge: "new", group: "Claude Code" },
   { value: "claude-opus-4-8[1m]", label: "Opus 4.8 1M", badge: "new", group: "Claude Code" },
@@ -34,7 +34,7 @@ const MODEL_OPTIONS: ModelOption[] = [
   { value: "haiku", label: "Haiku (latest)", group: "Aliases" },
 ];
 
-function ModelPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function ModelPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
