@@ -1,11 +1,12 @@
 "use client";
 import { useRef, useState } from "react";
-import { FileText, GitCompare, CheckCircle2, TerminalSquare, Globe, PanelRightClose } from "lucide-react";
+import { FileText, GitCompare, CheckCircle2, TerminalSquare, Globe, PanelRightClose, KeyRound } from "lucide-react";
 import { DiffViewer } from "@/components/DiffViewer";
 import { TerminalTabs } from "@/components/TerminalTabs";
 import { AllFiles } from "@/components/AllFiles";
 import { Checks } from "@/components/Checks";
 import { PreviewPanel } from "@/components/PreviewPanel";
+import { EnvPanel } from "@/components/EnvPanel";
 import { useJob } from "@/lib/data";
 
 // Conductor-style right pane for a workspace: All files | Changes | Checks |
@@ -13,7 +14,7 @@ import { useJob } from "@/lib/data";
 // (kept mounted once opened so its PTYs survive tab switches). "All files" and
 // "Checks" are Phase-3/5 stubs for now.
 
-type DockTab = "files" | "changes" | "checks" | "terminal" | "preview";
+type DockTab = "files" | "changes" | "checks" | "terminal" | "preview" | "env";
 
 interface Props {
   jobId: string;
@@ -30,6 +31,7 @@ const TABS: { key: DockTab; label: string; icon: React.ReactNode }[] = [
   { key: "checks", label: "Checks", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   { key: "terminal", label: "Terminal", icon: <TerminalSquare className="w-3.5 h-3.5" /> },
   { key: "preview", label: "Preview", icon: <Globe className="w-3.5 h-3.5" /> },
+  { key: "env", label: "Env", icon: <KeyRound className="w-3.5 h-3.5" /> },
 ];
 
 export function RightDock({ jobId, project, width, onClose }: Props) {
@@ -90,6 +92,12 @@ export function RightDock({ jobId, project, width, onClose }: Props) {
             canForward={!!job && job.status !== "pending" && job.status !== "plan_review"}
             refreshKey={job?.status ?? ""}
           />
+        )}
+
+        {tab === "env" && (
+          <div className="h-full overflow-y-auto p-4">
+            <EnvPanel localPath={project.localPath} projectName={project.name} />
+          </div>
         )}
 
         {/* Terminal kept mounted (just hidden) once opened so PTYs survive. */}
