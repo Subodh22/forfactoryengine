@@ -517,6 +517,7 @@ export function startServer(port: number): http.Server {
           if (typeof b.title === "string") fields.title = b.title.trim().slice(0, 80);
           if (typeof b.prompt === "string") fields.prompt = b.prompt;
           if (typeof b.assignee === "string") fields.assignee = b.assignee;
+          if (typeof b.model === "string") fields.model = b.model;
           if (typeof b.priority === "number") fields.priority = b.priority;
           if (typeof b.archived === "boolean") fields.archived = b.archived;
           if (typeof b.parentJobId === "string") {

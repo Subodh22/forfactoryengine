@@ -66,7 +66,7 @@ export const setTaskDone = (id: string, done: boolean) =>
 // restructure (re-parent for indent/outdent, reorder via priority).
 export const patchJob = (
   id: string,
-  fields: { title?: string; prompt?: string; assignee?: JobAssignee; parentJobId?: string; priority?: number },
+  fields: { title?: string; prompt?: string; assignee?: JobAssignee; parentJobId?: string; priority?: number; model?: string },
 ) => afterCreate(id).then(() => api<Job>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(fields) }));
 
 export const setAssignee = (id: string, assignee: JobAssignee) => patchJob(id, { assignee });
