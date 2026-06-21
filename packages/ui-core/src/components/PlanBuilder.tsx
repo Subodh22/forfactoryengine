@@ -138,11 +138,16 @@ export function PlanBuilder({ projectId }: Props) {
   const newTask = useCallback(async (parentId: string, priority: number, assignee: Job["assignee"]) => {
     const eid = await ensureEpic();
     const realParent = parentId === NO_EPIC ? eid : parentId;
-    const job = await addTask(eid, {
-      localId: uid(), title: "", assignee: assignee || "agent", parentJobId: realParent, priority,
-    });
-    if (job) { addJob(job); setPendingFocusId(job.id); }
-    return job;
+    try {
+      const job = await addTask(eid, {
+        localId: uid(), assignee: assignee || "agent", parentJobId: realParent, priority,
+      });
+      if (job) { addJob(job); setPendingFocusId(job.id); }
+      return job;
+    } catch (err) {
+      toast.error("Could not add the task", { description: String((err as Error).message ?? err) });
+      return undefined;
+    }
   }, [ensureEpic, addJob]);
 
   // Enter on a row → insert a sibling right after it.

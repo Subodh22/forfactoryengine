@@ -131,7 +131,7 @@ export function JobListView({ projectId, onSelectJob }: { projectId: string; onS
     if (parentJobId) setExpanded((e) => new Set(e).add(parentJobId));
     if (opts?.focus !== false) setPendingFocusId(id);
     const req = parentJobId
-      ? addTask(parentJobId, { localId: id, id, title, assignee, parentJobId, priority })
+      ? addTask(parentJobId, { localId: id, id, title: title || undefined, assignee, parentJobId, priority })
       : createJob({ id, projectId, title, prompt: title, kind: "task", images });
     trackCreate(id, req);
     req.catch((err) => { dropJob(id); toast.error(`Could not add the task: ${err instanceof Error ? err.message : String(err)}`); });

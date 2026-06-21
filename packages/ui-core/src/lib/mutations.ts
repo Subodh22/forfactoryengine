@@ -44,7 +44,7 @@ export interface PlanNode {
   id?: string;
   parentLocalId?: string;
   parentJobId?: string;
-  title: string;
+  title?: string;
   prompt?: string;
   assignee?: JobAssignee;
   dependsOn?: string[];
