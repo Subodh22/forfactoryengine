@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Save, Plus, Trash2, Eye, EyeOff, RefreshCw, Loader2, Braces, ListTree } from "lucide-react";
 import { toast } from "sonner";
 import { getEnv, saveEnv } from "@/lib/mutations";
@@ -45,8 +45,11 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
     setLoading(true);
     try {
       const data = await getEnv(localPath);
-      setRows(parseEnv(data.content));
-      setOriginal(data.content);
+      const parsed = parseEnv(data.content);
+      setRows(parsed);
+      // Normalize original through the same parse→serialize roundtrip so the
+      // dirty check doesn't fire on harmless whitespace differences (trailing \n).
+      setOriginal(serializeEnv(parsed));
       setExists(data.exists);
       setPathMissing(!!data.pathMissing);
     } catch (err: unknown) {
@@ -61,8 +64,20 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
   const current = serializeEnv(rows);
   const dirty = current !== original;
 
+  // Auto-save: write to disk after the user stops typing for 1.5s
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
+  useEffect(() => {
+    if (!dirty || loading || savingRef.current) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => { save(); }, 1500);
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, dirty, loading]);
+
   async function save() {
     setSaving(true);
+    savingRef.current = true;
     try {
       await saveEnv(localPath, current);
       setOriginal(current);
@@ -72,6 +87,7 @@ export function EnvPanel({ localPath, projectName }: { localPath: string; projec
       toast.error(err instanceof Error ? err.message : "Failed to save .env");
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   }
 

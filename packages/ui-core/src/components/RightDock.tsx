@@ -43,6 +43,9 @@ export function RightDock({ jobId, project, width, onClose }: Props) {
   // Keep preview iframe mounted once opened so navigation state persists.
   const openedPreview = useRef(false);
   if (tab === "preview") openedPreview.current = true;
+  // Keep env panel mounted once opened so unsaved edits survive tab switches.
+  const openedEnv = useRef(false);
+  if (tab === "env") openedEnv.current = true;
 
   return (
     <div className={`hidden lg:flex flex-shrink-0 border-l border-[#332f28] flex-col overflow-hidden bg-concrete ${width ? "" : "w-[42%] min-w-[380px] max-w-[760px]"}`} style={width ? { width } : undefined}>
@@ -94,8 +97,9 @@ export function RightDock({ jobId, project, width, onClose }: Props) {
           />
         )}
 
-        {tab === "env" && (
-          <div className="h-full overflow-y-auto p-4">
+        {/* Env panel kept mounted (just hidden) once opened so edits survive tab switches. */}
+        {openedEnv.current && (
+          <div className="h-full overflow-y-auto p-4" style={{ display: tab === "env" ? "block" : "none" }}>
             <EnvPanel localPath={project.localPath} projectName={project.name} />
           </div>
         )}
